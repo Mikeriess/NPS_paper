@@ -1,0 +1,53 @@
+Analysis notes;
+
+names: 
+Queue discipline
+Number of agents
+SLA => (None, 60 hours)
+
+Average simulated individual NPS repsonse after case closure
+Simulated number of promoters after case closure
+Simulated number of passives after case closure
+Simulated number of detractors after case closure
+Simlated NPS
+Average queue waiting time
+Average queue length
+Average number of busy agents
+
+Calculated metrics:
+% cases closed (cases arrived / cases closed)
+Average capacity utilization (avg. number of busy agents / number of agents)
+
+Background:
+White
+
+Order:
+NPS, SRTF, LRTF, FCFS
+
+Colors:
+Red, Green, Blue, Orange/brown
+
+==========================
+
+1) We always use the whole simulated observation period
+
+2) Make clear in the first paragraph of the performance section that the setting is that the regime is introduced with a cleared case queue
+
+3) Always use the same model specification
+
+4) Chart colouring
+
+
+==========================
+Structure of the results:
+
+Convergence behaviour
+- Does the queue stabilize over time?
+	- 
+
+Performance
+
+NPS after case closure
+
+Sensitivity analysis
+

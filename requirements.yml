@@ -1,0 +1,6 @@
+name: Portable_ABPS
+dependencies:
+  - python=3.8
+  - numpy
+  - pandas
+  - mpmath
