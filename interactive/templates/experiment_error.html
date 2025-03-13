@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Experiment Error - {{ run_id }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Experiment Error</h1>
+            <p>There was a problem with experiment: {{ run_id }}</p>
+            <a href="/" class="back-link">← Back to Experiments</a>
+        </header>
+
+        <main>
+            <div class="card error-card">
+                <h2>Error Details</h2>
+                <div class="error-message">
+                    <p>{{ error }}</p>
+                </div>
+                
+                {% if details %}
+                <div class="error-details">
+                    <h3>Technical Details</h3>
+                    <pre>{{ details }}</pre>
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="card">
+                <h2>Experiment Configuration</h2>
+                <div class="config-grid">
+                    <div class="config-item">
+                        <span class="config-label">Priority Scheme:</span>
+                        <span class="config-value">{{ params.priority_scheme }}</span>
+                    </div>
+                    <div class="config-item">
+                        <span class="config-label">Number of Agents:</span>
+                        <span class="config-value">{{ params.number_of_agents }}</span>
+                    </div>
+                    <div class="config-item">
+                        <span class="config-label">Hard Ceiling:</span>
+                        <span class="config-value">{{ params.hard_ceiling }}</span>
+                    </div>
+                    <div class="config-item">
+                        <span class="config-label">Ceiling Value:</span>
+                        <span class="config-value">{{ params.ceiling_value }}</span>
+                    </div>
+                    <div class="config-item">
+                        <span class="config-label">Burn-in Period:</span>
+                        <span class="config-value">{{ params.burn_in }} days</span>
+                    </div>
+                    <div class="config-item">
+                        <span class="config-label">Simulation Days:</span>
+                        <span class="config-value">{{ params.days }} days</span>
+                    </div>
+                    <div class="config-item">
+                        <span class="config-label">NPS Bias:</span>
+                        <span class="config-value">{{ params.nps_bias }}</span>
+                    </div>
+                    <div class="config-item">
+                        <span class="config-label">Start Date:</span>
+                        <span class="config-value">{{ params.startdate }}</span>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <p>Queue Prioritization Simulation - Interactive Mode</p>
+        </footer>
+    </div>
+</body>
+</html> 

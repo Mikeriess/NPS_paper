@@ -1,0 +1,10 @@
+{
+    "priority_scheme": "LRTF",
+    "number_of_agents": "1",
+    "hard_ceiling": "NONE",
+    "ceiling_value": "2.5",
+    "burn_in": "0",
+    "days": "365",
+    "nps_bias": "0",
+    "startdate": "2018-07-01"
+}

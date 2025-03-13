@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NPS Queue Simulation</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>NPS Queue Simulation Interactive</h1>
+            <p>Run queue prioritization experiments with custom parameters</p>
+        </header>
+
+        <main>
+            <div class="card">
+                <h2>Experiment Configuration</h2>
+                <form id="experiment-form">
+                    <div class="form-group">
+                        <label>Priority Schemes</label>
+                        <div class="checkbox-group">
+                            <div class="checkbox-item">
+                                <input type="checkbox" id="scheme-nps" name="priority_schemes" value="NPS" checked>
+                                <label for="scheme-nps">NPS</label>
+                            </div>
+                            <div class="checkbox-item">
+                                <input type="checkbox" id="scheme-srtf" name="priority_schemes" value="SRTF">
+                                <label for="scheme-srtf">SRTF</label>
+                            </div>
+                            <div class="checkbox-item">
+                                <input type="checkbox" id="scheme-lrtf" name="priority_schemes" value="LRTF">
+                                <label for="scheme-lrtf">LRTF</label>
+                            </div>
+                            <div class="checkbox-item">
+                                <input type="checkbox" id="scheme-fcfs" name="priority_schemes" value="FCFS">
+                                <label for="scheme-fcfs">FCFS</label>
+                            </div>
+                        </div>
+                        <div class="form-hint">Select at least one priority scheme to run</div>
+                        <div class="field-description">
+                            <strong>NPS</strong>: Prioritize by NPS prediction
+                            <strong>SRTF</strong>: Shortest Remaining Time First
+                            <strong>LRTF</strong>: Longest Remaining Time First
+                            <strong>FCFS</strong>: First Come First Served
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="number-of-agents">Number of Agents</label>
+                        <input type="number" id="number-of-agents" name="number_of_agents" min="1" max="50" value="7" required>
+                        <div class="field-description">Number of agents available to process cases</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="hard-ceiling">Hard Ceiling</label>
+                        <select id="hard-ceiling" name="hard_ceiling" required>
+                            <option value="NONE">NONE</option>
+                            <option value="SLA">SLA</option>
+                        </select>
+                        <div class="field-description">
+                            <strong>NONE</strong>: No ceiling on queue time
+                            <strong>SLA</strong>: Service Level Agreement ceiling
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="ceiling-value">Ceiling Value</label>
+                        <input type="number" id="ceiling-value" name="ceiling_value" min="0" max="100" step="0.1" value="5" required>
+                        <div class="field-description">Maximum allowed queue time in days (only applies if Hard Ceiling is set to SLA)</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="burn-in">Burn-in Period (days)</label>
+                        <input type="number" id="burn-in" name="burn_in" min="0" max="365" value="30" required>
+                        <div class="field-description">Initial period to stabilize the queue before collecting statistics</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="days">Simulation Days</label>
+                        <input type="number" id="days" name="days" min="1" max="1000" value="90" required>
+                        <div class="field-description">Total number of days to simulate (including burn-in period)</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="nps-bias">NPS Bias</label>
+                        <input type="number" id="nps-bias" name="nps_bias" min="-10" max="10" step="0.1" value="0" required>
+                        <div class="field-description">Bias added to NPS predictions (positive values increase predicted NPS)</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="startdate">Start Date</label>
+                        <input type="date" id="startdate" name="startdate" value="2018-07-01" required>
+                        <div class="field-description">Date to start the simulation (affects seasonal patterns)</div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" id="run-button">Run Experiment</button>
+                        <div id="loading" class="loading hidden">
+                            <div class="spinner"></div>
+                            <span>Running simulation...</span>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            <div class="card hidden" id="results-card">
+                <h2>Experiment Results</h2>
+                <div id="results-content">
+                    <div class="metrics-grid">
+                        <div class="metric-box">
+                            <h3>Run ID</h3>
+                            <p id="result-run-id">-</p>
+                        </div>
+                        <div class="metric-box">
+                            <h3>Execution Time</h3>
+                            <p id="result-execution-time">-</p>
+                        </div>
+                        <div class="metric-box">
+                            <h3>Total Cases</h3>
+                            <p id="result-total-cases">-</p>
+                        </div>
+                        <div class="metric-box">
+                            <h3>Closed Cases</h3>
+                            <p id="result-closed-cases">-</p>
+                        </div>
+                        <div class="metric-box">
+                            <h3>Avg NPS</h3>
+                            <p id="result-avg-nps">-</p>
+                        </div>
+                        <div class="metric-box">
+                            <h3>Avg Throughput Time</h3>
+                            <p id="result-avg-throughput">-</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card" id="previous-experiments">
+                <h2>Previous Experiments</h2>
+                <div id="experiments-list">
+                    <p>No previous experiments found.</p>
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <p>Queue Prioritization Simulation - Interactive Mode</p>
+        </footer>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html> 

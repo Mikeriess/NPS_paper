@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Experiment Results - {{ run_id }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Experiment Results</h1>
+            <p>Detailed analysis for experiment: {{ run_id }}</p>
+            <a href="/" class="back-link">← Back to Experiments</a>
+        </header>
+
+        <main>
+            <div class="card">
+                <h2>Experiment Configuration</h2>
+                <div class="config-grid">
+                    <div class="config-item">
+                        <span class="config-label">Priority Schemes:</span>
+                        <span class="config-value">{{ params.priority_schemes|join(', ') }}</span>
+                    </div>
+                    <div class="config-item">
+                        <span class="config-label">Number of Agents:</span>
+                        <span class="config-value">{{ params.number_of_agents }}</span>
+                    </div>
+                    <div class="config-item">
+                        <span class="config-label">Hard Ceiling:</span>
+                        <span class="config-value">{{ params.hard_ceiling }}</span>
+                    </div>
+                    <div class="config-item">
+                        <span class="config-label">Ceiling Value:</span>
+                        <span class="config-value">{{ params.ceiling_value }}</span>
+                    </div>
+                    <div class="config-item">
+                        <span class="config-label">Burn-in Period:</span>
+                        <span class="config-value">{{ params.burn_in }} days</span>
+                    </div>
+                    <div class="config-item">
+                        <span class="config-label">Simulation Days:</span>
+                        <span class="config-value">{{ params.days }} days</span>
+                    </div>
+                    <div class="config-item">
+                        <span class="config-label">NPS Bias:</span>
+                        <span class="config-value">{{ params.nps_bias }}</span>
+                    </div>
+                    <div class="config-item">
+                        <span class="config-label">Start Date:</span>
+                        <span class="config-value">{{ params.startdate }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Comparison Plots -->
+            <div class="card">
+                <h2>Scheme Comparison</h2>
+                
+                <div class="plot-container">
+                    <h3>NPS Score Comparison</h3>
+                    <img src="data:image/png;base64,{{ comparison_plots.nps_comparison }}" alt="NPS Score Comparison">
+                </div>
+                
+                <div class="plot-container">
+                    <h3>Throughput Time Comparison</h3>
+                    <img src="data:image/png;base64,{{ comparison_plots.throughput_comparison }}" alt="Throughput Time Comparison">
+                </div>
+                
+                <div class="plot-container">
+                    <h3>Closed Cases Comparison</h3>
+                    <img src="data:image/png;base64,{{ comparison_plots.closed_cases_comparison }}" alt="Closed Cases Comparison">
+                </div>
+            </div>
+
+            <!-- Tabs for individual scheme results -->
+            <div class="card">
+                <h2>Individual Scheme Results</h2>
+                
+                <div class="tabs">
+                    <div class="tab-header">
+                        {% for scheme in scheme_results %}
+                        <div class="tab-button {% if loop.first %}active{% endif %}" data-tab="{{ scheme }}">{{ scheme }}</div>
+                        {% endfor %}
+                    </div>
+                    
+                    <div class="tab-content">
+                        {% for scheme, result in scheme_results.items() %}
+                        <div class="tab-pane {% if loop.first %}active{% endif %}" id="tab-{{ scheme }}">
+                            <h3>{{ scheme }} Results</h3>
+                            
+                            <div class="metrics-grid">
+                                <div class="metric-box">
+                                    <h4>Total Cases</h4>
+                                    <p>{{ result.metrics.total_cases }}</p>
+                                </div>
+                                <div class="metric-box">
+                                    <h4>Closed Cases</h4>
+                                    <p>{{ result.metrics.closed_cases }}</p>
+                                </div>
+                                <div class="metric-box">
+                                    <h4>Avg NPS</h4>
+                                    <p>{{ "%.2f"|format(result.metrics.avg_nps) }}</p>
+                                </div>
+                                <div class="metric-box">
+                                    <h4>Avg Throughput Time</h4>
+                                    <p>{{ "%.2f"|format(result.metrics.avg_throughput_time) }} days</p>
+                                </div>
+                                <div class="metric-box">
+                                    <h4>NPS Score</h4>
+                                    <p>{{ "%.2f"|format(result.metrics.nps_score) }}</p>
+                                </div>
+                            </div>
+                            
+                            <div class="nps-breakdown">
+                                <h4>NPS Breakdown</h4>
+                                <div class="nps-segments">
+                                    <div class="nps-segment promoters">
+                                        <h4>Promoters</h4>
+                                        <p>{{ result.metrics.promoters }}</p>
+                                    </div>
+                                    <div class="nps-segment passives">
+                                        <h4>Passives</h4>
+                                        <p>{{ result.metrics.passives }}</p>
+                                    </div>
+                                    <div class="nps-segment detractors">
+                                        <h4>Detractors</h4>
+                                        <p>{{ result.metrics.detractors }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="plot-container">
+                                <h4>NPS Distribution</h4>
+                                <img src="data:image/png;base64,{{ result.plots.nps_distribution }}" alt="NPS Distribution">
+                            </div>
+                            
+                            <div class="plot-container">
+                                <h4>Throughput Time Distribution</h4>
+                                <img src="data:image/png;base64,{{ result.plots.throughput_distribution }}" alt="Throughput Time Distribution">
+                            </div>
+                            
+                            {% if 'nps_time_series' in result.plots %}
+                            <div class="plot-container">
+                                <h4>NPS Over Time</h4>
+                                <img src="data:image/png;base64,{{ result.plots.nps_time_series }}" alt="NPS Over Time">
+                            </div>
+                            {% endif %}
+                            
+                            {% if 'tt_time_series' in result.plots %}
+                            <div class="plot-container">
+                                <h4>Throughput Time Over Time</h4>
+                                <img src="data:image/png;base64,{{ result.plots.tt_time_series }}" alt="Throughput Time Over Time">
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <p>Queue Prioritization Simulation - Interactive Mode</p>
+        </footer>
+    </div>
+    
+    <script>
+        // Tab functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            const tabButtons = document.querySelectorAll('.tab-button');
+            const tabPanes = document.querySelectorAll('.tab-pane');
+            
+            tabButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    // Remove active class from all buttons and panes
+                    tabButtons.forEach(btn => btn.classList.remove('active'));
+                    tabPanes.forEach(pane => pane.classList.remove('active'));
+                    
+                    // Add active class to clicked button
+                    this.classList.add('active');
+                    
+                    // Show corresponding tab pane
+                    const tabId = this.getAttribute('data-tab');
+                    document.getElementById(`tab-${tabId}`).classList.add('active');
+                });
+            });
+        });
+    </script>
+</body>
+</html> 
