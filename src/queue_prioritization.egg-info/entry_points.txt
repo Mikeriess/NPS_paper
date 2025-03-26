@@ -1,0 +1,2 @@
+[console_scripts]
+queue-ui = queue_prioritization.web.app:main

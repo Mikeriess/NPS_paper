@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Queue Prioritization Simulation</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/github-dark.css') }}">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="/">Queue Prioritization Simulation</a>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h4>Configure Simulation</h4>
+                    </div>
+                    <div class="card-body">
+                        <form id="simulationForm">
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label for="days">Simulation Days:</label>
+                                        <input type="number" class="form-control" id="days" name="days" value="30" min="1" max="365">
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label for="burn_in">Burn-in Period (days):</label>
+                                        <input type="number" class="form-control" id="burn_in" name="burn_in" value="10" min="0" max="100">
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label for="startdate">Start Date:</label>
+                                        <input type="date" class="form-control" id="startdate" name="startdate" value="2022-01-01">
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label for="number_of_agents">Number of Agents:</label>
+                                        <input type="number" class="form-control" id="number_of_agents" name="number_of_agents" value="10" min="1" max="100">
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label for="hard_ceiling">Use SLA Ceiling:</label>
+                                        <select class="form-control" id="hard_ceiling" name="hard_ceiling">
+                                            <option value="true">Yes</option>
+                                            <option value="false">No</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label for="ceiling_value">Ceiling Value (days):</label>
+                                        <input type="number" class="form-control" id="ceiling_value" name="ceiling_value" value="30" min="1" max="100" step="0.5">
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="form-group mb-3">
+                                <label for="nps_bias">NPS Bias:</label>
+                                <input type="number" class="form-control" id="nps_bias" name="nps_bias" value="0" min="-1" max="1" step="0.1">
+                                <small class="form-text text-muted">Value between -1 and 1 that biases NPS scores (negative = more detractors, positive = more promoters)</small>
+                            </div>
+                            
+                            <div class="form-group mb-3">
+                                <label>Priority Schemes to Compare:</label>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="scheme_fcfs" name="priority_schemes" value="FCFS" checked>
+                                    <label class="form-check-label" for="scheme_fcfs">FCFS (First-Come-First-Served)</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="scheme_srtf" name="priority_schemes" value="SRTF">
+                                    <label class="form-check-label" for="scheme_srtf">SRTF (Shortest Remaining Time First)</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="scheme_lrtf" name="priority_schemes" value="LRTF">
+                                    <label class="form-check-label" for="scheme_lrtf">LRTF (Longest Remaining Time First)</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="scheme_nps" name="priority_schemes" value="NPS">
+                                    <label class="form-check-label" for="scheme_nps">NPS (Net Promoter Score based)</label>
+                                </div>
+                            </div>
+                            
+                            <button type="submit" class="btn btn-primary" id="runButton">Run Simulation</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header bg-success text-white">
+                        <h4>Previous Experiments</h4>
+                    </div>
+                    <div class="card-body">
+                        <div id="experimentsList">
+                            <p>Loading previous experiments...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card" id="runningCard" style="display: none;">
+                    <div class="card-header bg-info text-white">
+                        <h4>Simulation Status</h4>
+                    </div>
+                    <div class="card-body text-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <h5 class="mt-3">Running simulation...</h5>
+                        <p>This may take a few minutes depending on your settings.</p>
+                    </div>
+                </div>
+                
+                <div class="card" id="resultCard" style="display: none;">
+                    <div class="card-header bg-success text-white">
+                        <h4>Simulation Results</h4>
+                    </div>
+                    <div class="card-body">
+                        <div id="resultsContainer">
+                            <!-- Results will be displayed here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/jquery-3.6.0.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
+    <script>
+        $(document).ready(function() {
+            // Load previous experiments
+            loadExperiments();
+            
+            $("#simulationForm").submit(function(e) {
+                e.preventDefault();
+                runSimulation();
+            });
+        });
+        
+        function loadExperiments() {
+            $.get('/api/experiments', function(data) {
+                const experimentsList = $('#experimentsList');
+                experimentsList.empty();
+                
+                if (data.length === 0) {
+                    experimentsList.html('<p>No previous experiments found.</p>');
+                    return;
+                }
+                
+                const list = $('<div class="list-group"></div>');
+                
+                // Sort by timestamp descending (newest first)
+                data.sort((a, b) => b.timestamp - a.timestamp);
+                
+                data.forEach(exp => {
+                    const date = new Date(parseInt(exp.timestamp) * 1000).toLocaleString();
+                    const schemes = exp.params.priority_schemes.join(', ');
+                    
+                    list.append(`
+                        <a href="/experiment/${exp.run_id}" class="list-group-item list-group-item-action">
+                            <div class="d-flex w-100 justify-content-between">
+                                <h5 class="mb-1">Experiment ${date}</h5>
+                            </div>
+                            <p class="mb-1">Schemes: ${schemes}</p>
+                            <small>Agents: ${exp.params.number_of_agents}, Days: ${exp.params.days}</small>
+                        </a>
+                    `);
+                });
+                
+                experimentsList.append(list);
+            });
+        }
+        
+        function runSimulation() {
+            // Show running card, hide result card
+            $('#runningCard').show();
+            $('#resultCard').hide();
+            $('#runButton').prop('disabled', true);
+            
+            // Collect form data
+            const formData = {
+                days: parseInt($('#days').val()),
+                burn_in: parseInt($('#burn_in').val()),
+                startdate: $('#startdate').val(),
+                number_of_agents: parseInt($('#number_of_agents').val()),
+                hard_ceiling: $('#hard_ceiling').val() === 'true',
+                ceiling_value: parseFloat($('#ceiling_value').val()),
+                nps_bias: parseFloat($('#nps_bias').val()),
+                priority_schemes: []
+            };
+            
+            // Collect selected priority schemes
+            $('input[name="priority_schemes"]:checked').each(function() {
+                formData.priority_schemes.push($(this).val());
+            });
+            
+            // Send to server
+            $.ajax({
+                url: '/api/run_experiment',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify(formData),
+                success: function(response) {
+                    $('#runningCard').hide();
+                    $('#runButton').prop('disabled', false);
+                    
+                    if (response.status === 'success') {
+                        // Redirect to experiment results page
+                        window.location.href = `/experiment/${response.run_id}`;
+                    } else {
+                        alert('Error: ' + response.message);
+                    }
+                    
+                    // Refresh experiments list
+                    loadExperiments();
+                },
+                error: function(xhr, status, error) {
+                    $('#runningCard').hide();
+                    $('#runButton').prop('disabled', false);
+                    
+                    let errorMessage = 'An error occurred while running the simulation.';
+                    if (xhr.responseJSON && xhr.responseJSON.message) {
+                        errorMessage = xhr.responseJSON.message;
+                    }
+                    
+                    alert('Error: ' + errorMessage);
+                }
+            });
+        }
+    </script>
+</body>
+</html> 

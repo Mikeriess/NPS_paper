@@ -1,0 +1,14 @@
+name: queue-sim
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python=3.8
+  - numpy
+  - pandas
+  - matplotlib
+  - seaborn
+  - flask
+  - pip
+  - pip:
+    - -e . 

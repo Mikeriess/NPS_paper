@@ -1,3 +1,19 @@
+Metadata-Version: 2.1
+Name: queue_prioritization
+Version: 0.1.0
+Summary: Queue prioritization simulation framework
+Author: Original: Mike; Package: Your Name
+Requires-Python: >=3.6
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: numpy
+Requires-Dist: pandas
+Requires-Dist: matplotlib
+Requires-Dist: seaborn
+Requires-Dist: flask
+Requires-Dist: datetime
+Requires-Dist: plotly
+
 # Queue Prioritization Simulation
 
 This package contains a discrete event simulation framework for comparing different queue prioritization strategies in customer service scenarios. The code was used for the paper "Customer-service queuing based on predicted loyalty outcomes".
