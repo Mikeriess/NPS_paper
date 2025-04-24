@@ -3,3 +3,4 @@ interactive/interactive_results/
 archive/
 experiments/
 src/NPS_SIM/results/
+*.DS_Store
