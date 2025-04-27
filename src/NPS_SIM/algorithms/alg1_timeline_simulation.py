@@ -16,7 +16,8 @@ def Run_simulation(agents,
                    F_NPS_dist_bias,
                    F_tNPS_wtime_effect_bias=1.0,
                    filename="Test_log.csv", 
-                   verbose = False):
+                   verbose = False,
+                   results_dir="results"):
     """
     Run a simulation with the given parameters.
     
@@ -46,6 +47,8 @@ def Run_simulation(agents,
         Name of the output file
     verbose : bool
         Whether to print detailed output
+    results_dir : str
+        Directory where results should be stored
         
     Returns:
     --------
@@ -58,6 +61,8 @@ def Run_simulation(agents,
     import numpy as np
     np.random.seed(seed)
     import pandas as pd
+    import os
+    from pathlib import Path
     
     #from simulation.helper_functions import store_evlog, sim_generalized_lognormal
     from algorithms.alg2_case_arrival import CaseArrival
@@ -368,7 +373,17 @@ def Run_simulation(agents,
     # Mark the burn_in period:
     timeseries["burn_in_period"] = timeseries.day < F_burn_in #".loc[timeseries.day > burn_in-1]
     
-    timeseries.to_csv("results/"+str(seed)+"/"+str(seed)+"_timeseries.csv",index=False)
+    # Ensure the main results directory exists
+    results_path = Path(results_dir)
+    if not results_path.exists():
+        os.makedirs(results_path, exist_ok=True)
+    
+    # Ensure the run-specific directory exists
+    run_dir = results_path / str(seed)
+    os.makedirs(run_dir, exist_ok=True)
+    
+    # Save timeseries to the specified results directory
+    timeseries.to_csv(run_dir / f"{seed}_timeseries.csv", index=False)
     
     return evlog, Case_DB
 

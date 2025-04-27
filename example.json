@@ -1,0 +1,47 @@
+{
+    "F_priority_scheme": [
+        "NPS",
+        "SRTF",
+        "LRTF",
+        "FCFS"
+    ],
+    "F_number_of_agents": [
+        3
+    ],
+    "F_hard_ceiling": [
+        "NONE"
+    ],
+    "F_ceiling_value": [
+        2.5
+    ],
+    "F_burn_in": [
+        0
+    ],
+    "F_days": [
+        50
+    ],
+    "F_NPS_dist_bias": [
+        -2,
+        -1,
+        -0.5,
+        0,
+        0.5,
+        1,
+        2
+    ],
+    "F_tNPS_wtime_effect_bias": [
+        0.25,
+        0.5,
+        0.75,
+        1.0,
+        1.25,
+        1.5,
+        2.0
+    ],
+    "startdate": [
+        "2018-07-01"
+    ],
+    "repetition": [
+        0
+    ]
+}

@@ -6,14 +6,14 @@ This script runs a series of simulation experiments based on a design table.
 Each experiment represents a different configuration of simulation parameters.
 The script tracks progress, handles errors, and saves results for each run.
 
-Created on Wed Sep 14 09:54:34 2022
-@author: Mike
+Created based on original run.py
 """
 
 # Standard library imports
 import time
 import datetime
 import logging
+import argparse
 from pathlib import Path
 from typing import Tuple, Dict, Any
 import multiprocessing as mp
@@ -22,15 +22,13 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 # Third-party imports
 import pandas as pd 
 import numpy as np
+import sys
 
 # Local imports
 from algorithms.alg1_timeline_simulation import Run_simulation
 
-# Constants for file paths and configuration
-RESULTS_DIR = Path("results")  # Directory where all results will be stored
-DESIGN_TABLE_PATH = RESULTS_DIR / "design_table.csv"  # Path to the experiment design table
+# Default number of workers for parallel execution
 MAX_WORKERS = mp.cpu_count()  # Maximum number of parallel processes (defaults to CPU count)
-
 
 # Configure logging system
 # Sets up logging with timestamp, log level, and message format
@@ -41,11 +39,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-
-def load_experiments() -> pd.DataFrame:
+def load_experiments(results_dir: Path) -> pd.DataFrame:
     """
     Load and filter the design table containing experiment configurations.
     
+    Args:
+        results_dir (Path): Path to the directory containing the design table
+        
     Returns:
         pd.DataFrame: DataFrame containing only experiments that haven't been run yet (Done == 0)
     
@@ -53,9 +53,16 @@ def load_experiments() -> pd.DataFrame:
         FileNotFoundError: If the design table file doesn't exist
         Exception: For any other errors during loading
     """
+    design_table_path = results_dir / "design_table.csv"
+    
     try:
+        # Check if design table exists
+        if not design_table_path.exists():
+            logger.error(f"Design table not found at {design_table_path}")
+            raise FileNotFoundError(f"No design_table.csv found in {results_dir}. Please run generate_design.py first.")
+        
         # Load the design table from CSV
-        experiments = pd.read_csv(DESIGN_TABLE_PATH)
+        experiments = pd.read_csv(design_table_path)
         
         # Ensure datetime columns are string type
         datetime_columns = ["Started_at", "Finished_at"]
@@ -66,19 +73,18 @@ def load_experiments() -> pd.DataFrame:
         # Filter to only include experiments that haven't been run
         return experiments.loc[experiments.Done == 0]
     except FileNotFoundError:
-        logger.error(f"Design table not found at {DESIGN_TABLE_PATH}")
         raise
     except Exception as e:
         logger.error(f"Error loading experiments: {str(e)}")
         raise
 
 
-
-def create_results_directory(run: int) -> Path:
+def create_results_directory(results_dir: Path, run: int) -> Path:
     """
     Create a directory for storing results of a specific run.
     
     Args:
+        results_dir (Path): Path to the base results directory
         run (int): The run number/identifier
         
     Returns:
@@ -87,7 +93,7 @@ def create_results_directory(run: int) -> Path:
     Raises:
         Exception: If directory creation fails
     """
-    run_dir = RESULTS_DIR / str(run)
+    run_dir = results_dir / str(run)
     try:
         # Create directory if it doesn't exist, including parent directories if needed
         run_dir.mkdir(parents=True, exist_ok=True)
@@ -96,55 +102,6 @@ def create_results_directory(run: int) -> Path:
         logger.error(f"Error creating directory for run {run}: {str(e)}")
         raise
 
-
-
-def run_simulation_experiment(run: int, settings: pd.Series) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Execute a single simulation experiment with the given settings.
-    
-    Args:
-        run (int): The run number/identifier
-        settings (pd.Series): Series containing all simulation parameters
-        
-    Returns:
-        Tuple[pd.DataFrame, pd.DataFrame]: Event log and case database DataFrames
-        float: Duration of the simulation in seconds
-        
-    Raises:
-        Exception: If simulation fails
-    """
-    try:
-        # Set random seed for reproducibility - using run number as seed
-        np.random.seed(int(run))
-        
-        # Extract and organize simulation parameters from settings
-        sim_params = {
-            "agents": settings["F_number_of_agents"],  # Number of agents in simulation
-            "P_scheme": settings["F_priority_scheme"],  # Priority scheme to use
-            "ceiling": settings["F_hard_ceiling"],  # Whether to use hard ceiling
-            "F_ceiling_value": settings["ceiling_value"],  # Value of the ceiling if used
-            "F_days": settings["days"],  # Number of days to simulate
-            "F_burn_in": settings["burn_in"],  # Burn-in period length
-            "F_NPS_dist_bias": settings["F_NPS_dist_bias"],  # NPS bias parameter
-            "F_tNPS_wtime_effect_bias": settings["F_tNPS_wtime_effect_bias"],  # NPS bias parameter
-            "seed": int(run),  # Random seed for reproducibility
-            "startdate": datetime.datetime.fromisoformat(settings["startdate"])  # Simulation start date
-        }
-        
-        # Execute the simulation
-        start_time = time.time()
-        evlog, Case_DB = Run_simulation(**sim_params)
-        
-        # Add run identifier to both output DataFrames
-        evlog["RUN"] = run
-        Case_DB["RUN"] = run
-        # Mark cases that occurred during burn-in period
-        Case_DB["burn_in_period"] = Case_DB.arrival_q < settings["F_burn_in"] - 1
-        
-        return evlog, Case_DB, time.time() - start_time
-    except Exception as e:
-        logger.error(f"Error running simulation for run {run}: {str(e)}")
-        raise
 
 def save_results(run: int, evlog: pd.DataFrame, Case_DB: pd.DataFrame, run_dir: Path) -> None:
     """
@@ -167,6 +124,7 @@ def save_results(run: int, evlog: pd.DataFrame, Case_DB: pd.DataFrame, run_dir: 
         logger.error(f"Error saving results for run {run}: {str(e)}")
         raise
 
+
 def print_run_settings(run: int, settings: pd.Series) -> None:
     """
     Print the settings for a specific run in a readable format.
@@ -182,29 +140,31 @@ def print_run_settings(run: int, settings: pd.Series) -> None:
             logger.info(f"{param}: {value}")
     logger.info("=" * 50)
 
-def process_single_run(args: Tuple[int, pd.Series]) -> Tuple[int, Dict[str, Any]]:
+
+def process_single_run(args: Tuple[int, pd.Series, Path]) -> Tuple[int, Dict[str, Any]]:
     """
     Process a single simulation run.
     This function is designed to be called in parallel.
     
     Args:
-        args (Tuple[int, pd.Series]): Tuple containing:
+        args (Tuple[int, pd.Series, Path]): Tuple containing:
             - run number
             - settings Series
+            - results directory Path
     
     Returns:
         Tuple[int, Dict[str, Any]]: Tuple containing:
             - run number
             - dictionary of results to update in the design table
     """
-    run, settings = args
+    run, settings, results_dir = args
     
     try:
         # Print settings for this run
         print_run_settings(run, settings)
         
         # Check if this run has already been completed
-        run_dir = RESULTS_DIR / str(run)
+        run_dir = results_dir / str(run)
         log_file = run_dir / f"{run}_log.csv"
         
         if log_file.exists():
@@ -212,7 +172,7 @@ def process_single_run(args: Tuple[int, pd.Series]) -> Tuple[int, Dict[str, Any]
             return run, {}
         
         # Create directory for this run's results
-        run_dir = create_results_directory(run)
+        run_dir = create_results_directory(results_dir, run)
         
         # Record start time
         start_time = datetime.datetime.now()
@@ -240,7 +200,8 @@ def process_single_run(args: Tuple[int, pd.Series]) -> Tuple[int, Dict[str, Any]
             "F_tNPS_wtime_effect_bias": float(settings["F_tNPS_wtime_effect_bias"]),
             "seed": seed_value,  # Explicitly pass the seed
             "startdate": datetime.datetime.fromisoformat(str(settings["startdate"])),
-            "verbose": False
+            "verbose": False,
+            "results_dir": str(results_dir)  # Pass the results directory to the simulation
         }
         
         # Execute simulation with all parameters explicitly named
@@ -305,11 +266,13 @@ def process_single_run(args: Tuple[int, pd.Series]) -> Tuple[int, Dict[str, Any]
         logger.error(traceback.format_exc())
         raise
 
-def main(parallel: bool = True, max_workers: int = None):
+
+def run_experiments(results_dir: Path, parallel: bool = True, max_workers: int = None):
     """
     Main execution function that orchestrates the simulation experiments.
     
     Args:
+        results_dir (Path): Path to the directory containing design_table.csv and where results will be stored
         parallel (bool): Whether to run experiments in parallel
         max_workers (int): Maximum number of parallel processes. If None, uses CPU count.
     
@@ -323,10 +286,16 @@ def main(parallel: bool = True, max_workers: int = None):
     Raises:
         Exception: If a fatal error occurs during execution
     """
+    design_table_path = results_dir / "design_table.csv"
+    
     try:
         # Load experiment configurations
-        experiments = load_experiments()
+        experiments = load_experiments(results_dir)
         total_runs = len(experiments)
+        
+        if total_runs == 0:
+            logger.info("No incomplete experiments found in the design table. All experiments are marked as done.")
+            return
         
         if parallel:
             # Set number of workers
@@ -334,13 +303,13 @@ def main(parallel: bool = True, max_workers: int = None):
             logger.info(f"Running {total_runs} experiments in parallel using {num_workers} workers")
             
             # Prepare arguments for parallel processing
-            run_args = [(run, settings) for run, settings in experiments.iterrows()]
+            run_args = [(run, settings, results_dir) for run, settings in experiments.iterrows()]
             
             # Execute runs in parallel
             with ProcessPoolExecutor(max_workers=num_workers) as executor:
                 # Submit all tasks
                 future_to_run = {executor.submit(process_single_run, args): args[0] 
-                               for args in run_args}
+                                for args in run_args}
                 
                 # Collect results from all runs
                 results = {}
@@ -355,33 +324,72 @@ def main(parallel: bool = True, max_workers: int = None):
                 
                 # Update design table with all results in a single operation
                 if results:
+                    # Load full design table again to update
+                    full_experiments = pd.read_csv(design_table_path)
                     for run, run_results in results.items():
                         for col, value in run_results.items():
-                            experiments.at[run, col] = value
-                    experiments.to_csv(DESIGN_TABLE_PATH, index=False)
+                            full_experiments.at[run, col] = value
+                    full_experiments.to_csv(design_table_path, index=False)
                     logger.info(f"Updated design table with results from {len(results)} runs")
         else:
-            # Sequential execution (original code)
+            # Sequential execution
             logger.info(f"Running {total_runs} experiments sequentially")
             for idx, (run, settings) in enumerate(experiments.iterrows(), 1):
                 logger.info(f"\nProcessing run {run} ({idx}/{total_runs})")
-                run_num, run_results = process_single_run((run, settings))
-                if run_results:
-                    for col, value in run_results.items():
-                        experiments.at[run, col] = value
-                    experiments.to_csv(DESIGN_TABLE_PATH, index=False)
+                try:
+                    run_num, run_results = process_single_run((run, settings, results_dir))
+                    if run_results:
+                        # Load full design table again to update
+                        full_experiments = pd.read_csv(design_table_path)
+                        for col, value in run_results.items():
+                            full_experiments.at[run, col] = value
+                        full_experiments.to_csv(design_table_path, index=False)
+                        logger.info(f"Updated design table for run {run}")
+                except Exception as e:
+                    logger.error(f"Error in run {run}: {str(e)}")
+                    continue
             
     except Exception as e:
-        logger.error(f"Fatal error in main execution: {str(e)}")
+        logger.error(f"Fatal error in execution: {str(e)}")
         raise
 
+
+def main():
+    """Parse command line arguments and run experiments"""
+    parser = argparse.ArgumentParser(description="Run NPS simulation experiments based on a design table.")
+    parser.add_argument("--dest", type=str, required=True, 
+                        help="Path to directory containing design_table.csv and where results will be stored")
+    parser.add_argument("--parallel", action="store_true", default=True,
+                        help="Run experiments in parallel (default: True)")
+    parser.add_argument("--sequential", action="store_true", default=False,
+                        help="Run experiments sequentially")  
+    parser.add_argument("--workers", type=int, default=None,
+                        help="Number of parallel workers (default: CPU count)")
+    
+    args = parser.parse_args()
+    
+    # Convert destination to Path object
+    results_dir = Path(args.dest)
+    
+    # Check if destination directory exists
+    if not results_dir.exists():
+        logger.error(f"Destination directory '{args.dest}' does not exist.")
+        sys.exit(1)
+    
+    # Check if design_table.csv exists
+    design_table_path = results_dir / "design_table.csv"
+    if not design_table_path.exists():
+        logger.error(f"No design_table.csv found in {args.dest}. Please run generate_design.py first.")
+        sys.exit(1)
+    
+    # Determine whether to run in parallel or sequential mode
+    parallel = not args.sequential if args.sequential else args.parallel
+    
+    # Run experiments
+    run_experiments(results_dir, parallel=parallel, max_workers=args.workers)
+    
+    logger.info("All experiments completed successfully")
+
+
 if __name__ == "__main__":
-    # Example usage:
-    # Run in parallel with default number of workers (CPU count)
-    #main(parallel=True)
-    
-    # Run in parallel with specific number of workers
-    main(parallel=True, max_workers=10)
-    
-    # Run sequentially
-    # main(parallel=False)
+    main() 

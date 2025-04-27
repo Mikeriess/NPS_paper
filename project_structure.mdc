@@ -1,0 +1,6 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+The simulation code should only reside within src/NPS_SIM folder, and nowhere else, as the rest of the directory is for reporting and analysis.
