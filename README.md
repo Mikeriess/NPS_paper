@@ -5,6 +5,7 @@ This repository contains a simulation framework for studying the effects of diff
 ## Overview
 
 The simulation compares different queue prioritization methods:
+
 - First Come, First Served (FCFS)
 - Shortest Remaining Time First (SRTF)
 - Longest Remaining Time First (LRTF)
@@ -20,6 +21,7 @@ The framework allows manipulation of parameters in the simulated NPS calculation
 ## Experiment Workflow
 
 The experiment workflow consists of two main steps:
+
 1. Generating a design table that defines the experiment configurations
 2. Running the simulations based on the design table
 

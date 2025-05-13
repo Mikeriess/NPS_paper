@@ -30,8 +30,6 @@ Plan is to lay the groundwork for Study 3, which will be a scenario analysis of 
     
     - How much do we need to change it to see a change in the results?
 
-
-
 # Workflow Notes
 
 - Cursor rules + using the reasoning models seem to improve the usefullness
@@ -41,5 +39,3 @@ Plan is to lay the groundwork for Study 3, which will be a scenario analysis of 
   - Have experiments be defined from a json file, such that the codebase does not need to be touched
   
   - Have the LLM create a markdown document before running an experiment - the markdown should outline what parameters to set, which quyestions we have that should be revealed by the experiment, and what hypotheses we have prior to running the experiment. In this way, the procedure will be very well documented, easier to write up and likely more interesting for the reader.
-
-
