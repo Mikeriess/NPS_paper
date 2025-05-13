@@ -19,17 +19,23 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from matplotlib.backends.backend_pdf import PdfPages
 from datetime import datetime
+import statsmodels.formula.api as smf # Added import for statsmodels
 
 # Set seaborn style
 sns.set_style("whitegrid")
 plt.rcParams.update({'font.size': 10})
 
 def load_results(experiment_dir):
-    """Load the results file."""
-    results_path = os.path.join(experiment_dir, "results.csv")
+    """Load the design table file and filter for completed runs."""
+    results_path = os.path.join(experiment_dir, "design_table.csv") # Changed filename
     if not os.path.exists(results_path):
-        raise FileNotFoundError(f"Results file not found at {results_path}")
-    return pd.read_csv(results_path)
+        raise FileNotFoundError(f"Design table file not found at {results_path}") # Updated error message
+    df = pd.read_csv(results_path)
+    # Filter for completed runs, assuming 'Done' column exists and '1' means completed.
+    # If 'Done' column doesn't exist or has different semantics, this part may need adjustment.
+    if 'Done' in df.columns:
+        df = df[df['Done'] == 1].copy() # Added filtering for completed runs
+    return df
 
 def generate_report(experiment_dir, output_pdf=None):
     """
@@ -76,7 +82,7 @@ def generate_report(experiment_dir, output_pdf=None):
         
         # Create summary statistics
         summary_text = [
-            f"Total Runs: {len(results)}",
+            f"Total Runs: {len(results)}", # Will now reflect total *completed* runs if filtering is applied
             f"Priority Schemes: {', '.join(sorted(results['F_priority_scheme'].unique()))}",
         ]
         
@@ -100,18 +106,29 @@ def generate_report(experiment_dir, output_pdf=None):
         
         # Create a summary table with key metrics - Using all the requested metrics
         # First calculate closed_percent
-        results['closed_percent'] = results['closed_cases'] / results['Total_cases'] * 100
+        # Ensure 'cases_arrived' is not zero to avoid division by zero
+        if 'cases_arrived' in results.columns and 'cases_closed' in results.columns:
+            results['closed_percent'] = np.where(results['cases_arrived'] > 0, (results['cases_closed'] / results['cases_arrived']) * 100, 0)
+        else:
+            # Handle cases where these columns might be missing, though they are expected from design_table.csv
+            results['closed_percent'] = 0 
+        
+        overall_stats_cols = [
+            # Case metrics
+            'cases_arrived', 'cases_assigned_at_end', 'case_queued', 'cases_closed', 'closed_percent',
+            # Predicted metrics
+            'closed_avg_predicted_NPS', 'closed_avg_predicted_NPS_priority', 
+            'closed_avg_predicted_throughput_time',
+            # Simulated metrics
+            'closed_avg_simulated_NPS', 
+            'closed_avg_simulated_throughput_time',
+            'closed_avg_initial_delay'
+        ]
+        # Filter out any columns not present in results to prevent errors during groupby
+        available_overall_stats_cols = [col for col in overall_stats_cols if col in results.columns]
         
         overall_stats = results.groupby('F_priority_scheme')[
-            # Case metrics
-            ['Total_cases', 'assigned_cases', 'queued_cases', 'closed_cases', 'closed_percent',
-             # Estimated metrics
-             'mean_est_NPS', 'stdev_est_NPS', 'mean_est_NPS_priority', 
-             'mean_est_throughputtime', 'stdev_est_throughputtime',
-             # Simulated metrics
-             'mean_simulated_NPS', 'stdev_simulated_NPS', 'mean_simulated_NPS_priority',
-             'mean_simulated_throughput_time', 'stdev_simulated_throughput_time',
-             'mean_initial_delay', 'stdev_initial_delay']
+            available_overall_stats_cols
         ].mean().reset_index()
         
         # Transpose the table - schemes become columns, metrics become rows
@@ -125,56 +142,44 @@ def generate_report(experiment_dir, output_pdf=None):
         # Add row labels (metrics)
         metric_names = [
             'CASE METRICS',
-            'Total Cases',
-            'Assigned Cases',
-            'Queued Cases',
-            'Closed Cases',
-            'Closed Percent (%)',
+            'Total Cases',            # maps to cases_arrived
+            'Assigned Cases',         # maps to cases_assigned_at_end
+            'Queued Cases',           # maps to case_queued
+            'Closed Cases',           # maps to cases_closed
+            'Closed Percent (%)',     # calculated
             
-            'ESTIMATED METRICS',
-            'Mean Estimated NPS',
-            'Std Dev Estimated NPS',
-            'Mean Estimated NPS Priority',
-            'Mean Estimated Throughput Time (h)',
-            'Std Dev Estimated Throughput Time (h)',
+            'PREDICTED METRICS',      # Renamed from ESTIMATED
+            'Mean Predicted NPS',     # maps to closed_avg_predicted_NPS
+            'Mean Predicted NPS Priority', # maps to closed_avg_predicted_NPS_priority
+            'Mean Predicted Throughput Time (h)', # maps to closed_avg_predicted_throughput_time
             
             'SIMULATED METRICS',
-            'Mean Simulated NPS',
-            'Std Dev Simulated NPS',
-            'Mean Simulated NPS Priority',
-            'Mean Simulated Throughput Time (h)',
-            'Std Dev Simulated Throughput Time (h)',
-            'Mean Initial Delay (h)',
-            'Std Dev Initial Delay (h)'
+            'Mean Simulated NPS',     # maps to closed_avg_simulated_NPS
+            'Mean Simulated Throughput Time (h)', # maps to closed_avg_simulated_throughput_time
+            'Mean Initial Delay (h)'  # maps to closed_avg_initial_delay
         ]
         
         # Variables to track section headers
-        section_headers = ['CASE METRICS', 'ESTIMATED METRICS', 'SIMULATED METRICS']
+        section_headers = ['CASE METRICS', 'PREDICTED METRICS', 'SIMULATED METRICS'] # Updated section header
         
         # Mapping of metrics to their corresponding columns in the dataframe
         metric_map = {
             # Case metrics
-            'Total Cases': 'Total_cases',
-            'Assigned Cases': 'assigned_cases',
-            'Queued Cases': 'queued_cases',
-            'Closed Cases': 'closed_cases',
+            'Total Cases': 'cases_arrived',
+            'Assigned Cases': 'cases_assigned_at_end',
+            'Queued Cases': 'case_queued',
+            'Closed Cases': 'cases_closed',
             'Closed Percent (%)': 'closed_percent',
             
-            # Estimated metrics
-            'Mean Estimated NPS': 'mean_est_NPS',
-            'Std Dev Estimated NPS': 'stdev_est_NPS',
-            'Mean Estimated NPS Priority': 'mean_est_NPS_priority',
-            'Mean Estimated Throughput Time (h)': 'mean_est_throughputtime',
-            'Std Dev Estimated Throughput Time (h)': 'stdev_est_throughputtime',
+            # Predicted metrics
+            'Mean Predicted NPS': 'closed_avg_predicted_NPS',
+            'Mean Predicted NPS Priority': 'closed_avg_predicted_NPS_priority',
+            'Mean Predicted Throughput Time (h)': 'closed_avg_predicted_throughput_time',
             
             # Simulated metrics
-            'Mean Simulated NPS': 'mean_simulated_NPS',
-            'Std Dev Simulated NPS': 'stdev_simulated_NPS',
-            'Mean Simulated NPS Priority': 'mean_simulated_NPS_priority',
-            'Mean Simulated Throughput Time (h)': 'mean_simulated_throughput_time',
-            'Std Dev Simulated Throughput Time (h)': 'stdev_simulated_throughput_time',
-            'Mean Initial Delay (h)': 'mean_initial_delay',
-            'Std Dev Initial Delay (h)': 'stdev_initial_delay'
+            'Mean Simulated NPS': 'closed_avg_simulated_NPS',
+            'Mean Simulated Throughput Time (h)': 'closed_avg_simulated_throughput_time',
+            'Mean Initial Delay (h)': 'closed_avg_initial_delay'
         }
         
         # Adjust y positions for the metrics - reduced spacing to fit all metrics
@@ -247,227 +252,213 @@ def plot_nps_distribution(results, pdf, ordered_schemes):
     scheme_colors = {scheme: palette[i] for i, scheme in enumerate(ordered_schemes)}
     
     # Create a boxplot of NPS scores by priority scheme
-    sns.boxplot(x='F_priority_scheme', y='mean_simulated_NPS', 
-               data=results, order=ordered_schemes, palette=scheme_colors)
+    sns.boxplot(x='F_priority_scheme', y='closed_avg_simulated_NPS',  # Updated y argument
+                data=results, 
+                order=ordered_schemes, 
+                palette=scheme_colors,
+                showfliers=False) # Hiding outliers for now
     
-    plt.title('Distribution of Mean NPS Scores by Priority Scheme', fontsize=14)
-    plt.xlabel('F_priority_scheme', fontsize=12)
-    plt.ylabel('mean_simulated_NPS', fontsize=12)
+    plt.title('Distribution of Mean Simulated NPS by Priority Scheme', fontsize=16)
+    plt.xlabel('Priority Scheme', fontsize=12)
+    plt.ylabel('Mean Simulated NPS (per run)', fontsize=12) # Clarified y-axis label
+    plt.xticks(rotation=45, ha="right")
     plt.tight_layout()
     pdf.savefig()
     plt.close()
     
-    # If we have multiple parameter combinations, show heatmap
-    if ('F_NPS_dist_bias' in results.columns and 
-        'F_tNPS_wtime_effect_bias' in results.columns and
-        len(results['F_NPS_dist_bias'].unique()) > 1 and
-        len(results['F_tNPS_wtime_effect_bias'].unique()) > 1):
+    # Add a table with mean and std dev of NPS scores below the plot
+    plt.figure(figsize=(10, 2)) # Adjusted size for table
+    plt.axis('off')
+    
+    if 'closed_avg_simulated_NPS' in results.columns: # Check if column exists
+        nps_summary = results.groupby('F_priority_scheme')['closed_avg_simulated_NPS'].agg(['mean', 'std']).reindex(ordered_schemes).reset_index()
         
-        plt.figure(figsize=(12, 10))
-        
-        # Create a facet grid for different priority schemes
-        fig, axes = plt.subplots(2, 2, figsize=(12, 10), sharex=True, sharey=True)
-        axes = axes.flatten()
-        
-        for i, scheme in enumerate(ordered_schemes):
-            if i >= 4:  # Only show first 4 schemes
-                break
-                
-            # Get data for this scheme
-            scheme_data = results[results['F_priority_scheme'] == scheme]
+        table_data = [["Scheme", "Mean of Means", "Std Dev of Means"]]
+        for index, row in nps_summary.iterrows():
+            table_data.append([row['F_priority_scheme'], f"{row['mean']:.2f}", f"{row['std']:.2f}"])
             
-            # Create pivot table
-            if len(scheme_data) > 0:
-                pivot = scheme_data.pivot_table(
-                    index='F_NPS_dist_bias',
-                    columns='F_tNPS_wtime_effect_bias',
-                    values='mean_simulated_NPS',
-                    aggfunc='mean'
-                )
-                
-                # Plot heatmap
-                sns.heatmap(pivot, annot=True, fmt=".2f", cmap="YlGnBu", ax=axes[i])
-                axes[i].set_title(f'{scheme}')
-                axes[i].set_xlabel('F_tNPS_wtime_effect_bias')
-                axes[i].set_ylabel('F_NPS_dist_bias')
-        
-        plt.tight_layout()
-        plt.suptitle('NPS Score by Parameter Combination', fontsize=16, y=1.02)
-        pdf.savefig()
+        table = plt.table(cellText=table_data, colLabels=None, cellLoc = 'center', loc='center', bbox=[0, 0, 1, 1])
+        table.auto_set_font_size(False)
+        table.set_fontsize(10)
+        table.scale(1, 1.5) # Adjust cell height
+        plt.title('Summary of Mean Simulated NPS (across runs)', loc='left', fontsize=10, y=0.8) # Adjusted title
+    else:
+        plt.text(0.5, 0.5, "closed_avg_simulated_NPS column not found for summary table.", ha='center', va='center')
+
+    plt.tight_layout()
+    pdf.savefig()
+    plt.close()
+
+def plot_regression_analysis(results_df, pdf_object, dep_var_col, dep_var_label, predictor_cols_numerical, predictor_col_categorical):
+    """
+    Perform OLS regression and plot the summary to a PDF page.
+    """
+    plt.figure(figsize=(11.7, 16.5))  # A4 size in inches (landscape for summary)
+    plt.axis('off')
+    
+    formula_parts = [dep_var_col, "~"]
+    if predictor_cols_numerical:
+        formula_parts.append(" + ".join(predictor_cols_numerical))
+    
+    if predictor_col_categorical:
+        if predictor_cols_numerical: # Add '+' if numerical predictors are already there
+            formula_parts.append(f" + C({predictor_col_categorical})")
+        else:
+            formula_parts.append(f"C({predictor_col_categorical})") # No '+' if it's the first predictor
+            
+    if len(formula_parts) == 2: # Only dep_var ~ (i.e. no predictors)
+        plt.text(0.5, 0.5, f"No valid predictors found for {dep_var_label}.", ha='center', va='center', fontsize=12, color='red')
+        plt.title(f"Regression Analysis for: {dep_var_label} - SKIPPED", fontsize=14, y=0.98)
+        pdf_object.savefig()
         plt.close()
+        return
+
+    formula = "".join(formula_parts)
+    
+    plt.title(f"Regression Analysis for: {dep_var_label}\\nFormula: {formula}", fontsize=14, y=0.97)
+
+    try:
+        # Ensure dependent variable is numeric
+        results_df[dep_var_col] = pd.to_numeric(results_df[dep_var_col], errors='coerce')
+        # Drop rows where the dependent or any predictor variable is NaN before fitting
+        cols_for_na_check = [dep_var_col] + predictor_cols_numerical
+        if predictor_col_categorical:
+            cols_for_na_check.append(predictor_col_categorical)
+        
+        cleaned_df = results_df.dropna(subset=cols_for_na_check).copy()
+
+        if cleaned_df.empty or cleaned_df[dep_var_col].nunique() < 2:
+            raise ValueError("Not enough data or variance in dependent variable after cleaning.")
+
+        # Check variance for numerical predictors in cleaned_df
+        valid_numerical_predictors = []
+        for p_col in predictor_cols_numerical:
+            if cleaned_df[p_col].nunique() > 1:
+                valid_numerical_predictors.append(p_col)
+            else:
+                print(f"Warning: Predictor '{p_col}' has no variance after NA drop for DV '{dep_var_label}', removing from this regression.")
+        
+        # Reconstruct formula with only valid predictors
+        formula_parts_cleaned = [dep_var_col, "~"]
+        if valid_numerical_predictors:
+            formula_parts_cleaned.append(" + ".join(valid_numerical_predictors))
+        
+        if predictor_col_categorical and cleaned_df[predictor_col_categorical].nunique() > 1 :
+            if valid_numerical_predictors:
+                 formula_parts_cleaned.append(f" + C({predictor_col_categorical})")
+            else:
+                 formula_parts_cleaned.append(f"C({predictor_col_categorical})")
+        elif predictor_col_categorical:
+             print(f"Warning: Categorical predictor '{predictor_col_categorical}' has no variance after NA drop for DV '{dep_var_label}', removing from this regression.")
+
+
+        if len(formula_parts_cleaned) == 2: # Only dep_var ~ (i.e. no predictors left)
+             raise ValueError("No valid predictors left after checking variance post NA drop.")
+        
+        formula_cleaned = "".join(formula_parts_cleaned)
+
+
+        model = smf.ols(formula_cleaned, data=cleaned_df).fit()
+        summary_text = str(model.summary())
+        
+        # Update title with the formula actually used
+        plt.gca().set_title(f"Regression Analysis for: {dep_var_label}\\nFormula: {formula_cleaned}", fontsize=14, y=0.97, wrap=True)
+        plt.text(0.01, 0.90, summary_text, family='monospace', fontsize=8, va='top', ha='left')
+
+    except Exception as e:
+        error_message = f"Could not perform regression for {dep_var_label}.\\nError: {str(e)}"
+        print(error_message)
+        plt.text(0.5, 0.5, error_message, ha='center', va='center', fontsize=10, color='red', wrap=True)
+
+    pdf_object.savefig()
+    plt.close()
 
 def plot_performance_comparison(results, pdf, ordered_schemes):
     """
-    Plot basic performance metrics across priority schemes.
+    Plot key performance metrics for comparison.
+    - Average NPS
+    - Average Throughput Time
+    - Total Closed Cases
+    - Average Initial Delay
     """
-    # Enhanced comparison: NPS metrics side by side
-    plt.figure(figsize=(12, 8))
     
-    # Create a dataframe with both simulated and estimated NPS metrics
-    nps_data = results.groupby('F_priority_scheme')[
-        ['mean_simulated_NPS', 'mean_est_NPS', 
-         'mean_simulated_NPS_priority', 'mean_est_NPS_priority']
-    ].mean().reset_index()
-    
-    # Reshape for easier plotting
-    nps_plot_data = pd.melt(
-        nps_data,
-        id_vars=['F_priority_scheme'],
-        value_vars=['mean_simulated_NPS', 'mean_est_NPS', 
-                   'mean_simulated_NPS_priority', 'mean_est_NPS_priority'],
-        var_name='Metric',
-        value_name='NPS Score'
-    )
-    
-    # Create better labels for the metrics
-    metric_labels = {
-        'mean_simulated_NPS': 'Simulated NPS',
-        'mean_est_NPS': 'Estimated NPS',
-        'mean_simulated_NPS_priority': 'Simulated NPS Priority',
-        'mean_est_NPS_priority': 'Estimated NPS Priority'
+    # Define metrics to plot, their y-axis labels, and titles
+    # Ensure these columns exist in the results DataFrame
+    metrics_to_plot_config = {
+        'closed_avg_simulated_NPS': ('Average Simulated NPS (per run)', 'Overall Average Simulated NPS by Priority Scheme'),
+        'closed_avg_simulated_throughput_time': ('Average Simulated Throughput Time (h, per run)', 'Overall Average Simulated Throughput Time by Priority Scheme'),
+        'cases_closed': ('Total Closed Cases (sum across runs)', 'Total Closed Cases by Priority Scheme'), # This will now sum up 'cases_closed' per scheme
+        'closed_avg_initial_delay': ('Average Initial Delay (h, per run)', 'Overall Average Initial Delay by Priority Scheme')
     }
-    nps_plot_data['Metric'] = nps_plot_data['Metric'].map(metric_labels)
     
-    # Plot NPS comparison
-    sns.barplot(x='F_priority_scheme', y='NPS Score', hue='Metric', 
-                data=nps_plot_data, order=ordered_schemes)
-    
-    plt.title('NPS Metrics by Priority Scheme', fontsize=14)
-    plt.xlabel('Priority Scheme', fontsize=12)
-    plt.ylabel('NPS Score', fontsize=12)
-    plt.legend(title='Metric Type')
-    plt.tight_layout()
-    pdf.savefig()
-    plt.close()
-    
-    # Plot throughput time and delay metrics
-    plt.figure(figsize=(12, 8))
-    time_data = results.groupby('F_priority_scheme')[
-        ['mean_simulated_throughput_time', 'mean_est_throughputtime', 'mean_initial_delay']
-    ].mean().reset_index()
-    
-    # Reshape for plotting
-    time_plot_data = pd.melt(
-        time_data,
-        id_vars=['F_priority_scheme'],
-        value_vars=['mean_simulated_throughput_time', 'mean_est_throughputtime', 'mean_initial_delay'],
-        var_name='Metric',
-        value_name='Time (hours)'
-    )
-    
-    # Create better labels
-    time_labels = {
-        'mean_simulated_throughput_time': 'Simulated Throughput Time',
-        'mean_est_throughputtime': 'Estimated Throughput Time',
-        'mean_initial_delay': 'Initial Delay'
-    }
-    time_plot_data['Metric'] = time_plot_data['Metric'].map(time_labels)
-    
-    # Plot time comparison
-    sns.barplot(x='F_priority_scheme', y='Time (hours)', hue='Metric', 
-                data=time_plot_data, order=ordered_schemes)
-    
-    plt.title('Time Metrics by Priority Scheme', fontsize=14)
-    plt.xlabel('Priority Scheme', fontsize=12)
-    plt.ylabel('Time (hours)', fontsize=12)
-    plt.legend(title='Metric Type')
-    plt.tight_layout()
-    pdf.savefig()
-    plt.close()
-    
-    # Plot case metrics with percentage
-    plt.figure(figsize=(12, 8))
-    
-    # Create a bar chart for case counts
-    case_data = results.groupby('F_priority_scheme')[
-        ['Total_cases', 'closed_cases', 'queued_cases', 'assigned_cases']
-    ].mean().reset_index()
-    
-    melted_case_data = pd.melt(
-        case_data,
-        id_vars=['F_priority_scheme'],
-        value_vars=['Total_cases', 'closed_cases', 'queued_cases', 'assigned_cases'],
-        var_name='Metric',
-        value_name='Count'
-    )
-    
-    # Better labels
-    case_labels = {
-        'Total_cases': 'Total Cases',
-        'closed_cases': 'Closed Cases',
-        'queued_cases': 'Queued Cases',
-        'assigned_cases': 'Assigned Cases'
-    }
-    melted_case_data['Metric'] = melted_case_data['Metric'].map(case_labels)
-    
-    # Plot case counts
-    sns.barplot(x='F_priority_scheme', y='Count', hue='Metric',
-                data=melted_case_data, order=ordered_schemes)
-    
-    plt.title('Case Metrics by Priority Scheme', fontsize=14)
-    plt.xlabel('Priority Scheme', fontsize=12)
-    plt.ylabel('Count', fontsize=12)
-    plt.legend(title='Metric')
-    plt.tight_layout()
-    pdf.savefig()
-    plt.close()
-    
-    # Create a separate plot for closed percentage
-    plt.figure(figsize=(10, 6))
-    closed_pct_data = results.groupby('F_priority_scheme')['closed_percent'].mean().reset_index()
-    
-    sns.barplot(x='F_priority_scheme', y='closed_percent', 
-                data=closed_pct_data, order=ordered_schemes)
-    
-    plt.title('Case Closure Rate by Priority Scheme', fontsize=14)
-    plt.xlabel('Priority Scheme', fontsize=12)
-    plt.ylabel('Closed Cases (%)', fontsize=12)
-    plt.tight_layout()
-    pdf.savefig()
-    plt.close()
-    
-    # Add a side-by-side variance comparison (standard deviations)
-    plt.figure(figsize=(12, 8))
-    
-    # Get standard deviation metrics
-    std_data = results.groupby('F_priority_scheme')[
-        ['stdev_simulated_NPS', 'stdev_est_NPS', 
-         'stdev_simulated_throughput_time', 'stdev_est_throughputtime',
-         'stdev_initial_delay']
-    ].mean().reset_index()
-    
-    # Reshape for plotting
-    std_plot_data = pd.melt(
-        std_data,
-        id_vars=['F_priority_scheme'],
-        value_vars=['stdev_simulated_NPS', 'stdev_est_NPS', 
-                   'stdev_simulated_throughput_time', 'stdev_est_throughputtime',
-                   'stdev_initial_delay'],
-        var_name='Metric',
-        value_name='Standard Deviation'
-    )
-    
-    # Better labels
-    std_labels = {
-        'stdev_simulated_NPS': 'Simulated NPS',
-        'stdev_est_NPS': 'Estimated NPS',
-        'stdev_simulated_throughput_time': 'Simulated Throughput Time',
-        'stdev_est_throughputtime': 'Estimated Throughput Time',
-        'stdev_initial_delay': 'Initial Delay'
-    }
-    std_plot_data['Metric'] = std_plot_data['Metric'].map(std_labels)
-    
-    # Plot standard deviations
-    sns.barplot(x='F_priority_scheme', y='Standard Deviation', hue='Metric',
-                data=std_plot_data, order=ordered_schemes)
-    
-    plt.title('Metric Variability by Priority Scheme', fontsize=14)
-    plt.xlabel('Priority Scheme', fontsize=12)
-    plt.ylabel('Standard Deviation', fontsize=12)
-    plt.legend(title='Metric')
-    plt.tight_layout()
-    pdf.savefig()
-    plt.close()
+    # Filter out metrics that are not in results.columns
+    available_metrics = {metric: config for metric, config in metrics_to_plot_config.items() if metric in results.columns}
+
+    # Create custom palette for consistent colors
+    palette = sns.color_palette("viridis", n_colors=len(ordered_schemes))
+    scheme_colors = {scheme: palette[i] for i, scheme in enumerate(ordered_schemes)}
+
+    for metric, (y_label, title) in available_metrics.items():
+        plt.figure(figsize=(10, 6))
+        
+        # For 'cases_closed', we want to sum them up across runs for each scheme. For others, mean.
+        if metric == 'cases_closed':
+            plot_data = results.groupby('F_priority_scheme')[metric].sum().reindex(ordered_schemes).reset_index()
+        else:
+            plot_data = results.groupby('F_priority_scheme')[metric].mean().reindex(ordered_schemes).reset_index()
+
+        sns.barplot(x='F_priority_scheme', y=metric, data=plot_data, order=ordered_schemes, palette=scheme_colors, ci=None) # ci=None as we plot means of means or sums
+        
+        plt.title(title, fontsize=16)
+        plt.xlabel('Priority Scheme', fontsize=12)
+        plt.ylabel(y_label, fontsize=12)
+        plt.tight_layout()
+        pdf.savefig()
+        plt.close()
+
+    # --- Regression Analysis Section ---
+    if results.empty:
+        print("Skipping regression analysis as the results DataFrame is empty.")
+    else:
+        predictor_cols_numerical = []
+        potential_numerical_predictors = ['F_NPS_dist_bias', 'F_tNPS_wtime_effect_bias', 'F_number_of_agents'] # Add other potential factors if needed
+        
+        for col_name in potential_numerical_predictors:
+            if col_name in results.columns and pd.to_numeric(results[col_name], errors='coerce').nunique() > 1:
+                predictor_cols_numerical.append(col_name)
+            elif col_name in results.columns:
+                 print(f"Predictor '{col_name}' excluded from regression due to single unique value or non-numeric type.")
+
+
+        categorical_predictor = 'F_priority_scheme' if 'F_priority_scheme' in results.columns and results['F_priority_scheme'].nunique() > 1 else None
+        if 'F_priority_scheme' in results.columns and results['F_priority_scheme'].nunique() <=1 and categorical_predictor is None:
+            print("Categorical predictor 'F_priority_scheme' excluded due to single unique value.")
+
+
+        dependent_vars_config = {
+            'closed_avg_simulated_throughput_time': 'Simulated Throughput Time',
+            'closed_percent': 'Proportion of Closed Cases (%)',
+            'closed_avg_simulated_NPS': 'Simulated NPS'
+        }
+
+        min_obs_for_regression = len(predictor_cols_numerical) + (results[categorical_predictor].nunique() if categorical_predictor and categorical_predictor in results else 1) + 2 # Basic rule of thumb: k+1 obs, adding a small margin
+
+        for dep_var_col, dep_var_label in dependent_vars_config.items():
+            if dep_var_col in results.columns and pd.to_numeric(results[dep_var_col], errors='coerce').notnull().all():
+                # Ensure the dependent variable itself has variance
+                if results[dep_var_col].nunique() < 2:
+                    print(f"Skipping regression for '{dep_var_label}' (column '{dep_var_col}') as it has less than 2 unique values.")
+                    continue
+                
+                # Check if there are enough data points
+                if len(results.dropna(subset=[dep_var_col] + predictor_cols_numerical + ([categorical_predictor] if categorical_predictor else []))) >= min_obs_for_regression:
+                    plot_regression_analysis(results.copy(), pdf, dep_var_col, dep_var_label, predictor_cols_numerical, categorical_predictor)
+                else:
+                    print(f"Skipping regression for '{dep_var_label}' due to insufficient data points after potential NA drops (need at least {min_obs_for_regression}).")
+            else:
+                print(f"Skipping regression for '{dep_var_label}' as column '{dep_var_col}' is missing, not numeric, or all NaN.")
+        
+        # --- End of Regression Analysis Section ---
 
 def main():
     """Main function to parse arguments and generate the report."""
