@@ -73,7 +73,7 @@ This will create a `design_table.csv` file in the same directory as your setting
 Once you have generated a design table, you can run the experiments using the `run_experiment.py` script:
 
 ```bash
-python src/NPS_SIM/run_experiment.py --dest experiments/simple_fcfs
+python src/NPS_SIM/run_experiment.py --experiment experiments/simple_fcfs
 ```
 
 ### Command Line Options
@@ -143,4 +143,52 @@ ls -la experiments/simple_fcfs
 - `F_NPS_dist_bias`: Additive bias to the intercept of the Gamma regression for NPS
 - `F_tNPS_wtime_effect_bias`: Multiplicative scaling factor for the log-transformed throughput time effect on NPS
 - `startdate`: Simulation start date
-- `repetition`: Repetition number for the experiment 
+- `repetition`: Repetition number for the experiment
+
+## Experiment Pipeline Automation (`pipeline.py`)
+
+A Python script `pipeline.py` is provided in the project root to automate the entire experimental workflow from generating a design table to producing the final analysis report.
+
+### Prerequisites
+
+1.  Ensure all required Python packages for the individual scripts (`generate_design.py`, `run_experiment.py`, `report_from_results.py`) are installed (see `analysis/README.md` for a list including `pandas`, `numpy`, `matplotlib`, `seaborn`, `scipy`, `plotly`, `kaleido`).
+2.  Create an experiment directory (e.g., `experiments/my_experiment`).
+3.  Place a valid `settings.json` file (defining your experimental factors and levels) inside this experiment directory.
+
+### Usage
+
+To run the full pipeline, execute `pipeline.py` from the project root directory, providing the path to your experiment directory:
+
+```bash
+python pipeline.py --experiment_dir path/to/your/experiment_folder
+```
+
+**Example:**
+
+```bash
+python pipeline.py --experiment_dir experiments/my_small_test
+```
+
+### Optional Arguments
+
+-   `--sequential`:
+    Use this flag to force the simulation experiments (run by `src/NPS_SIM/run_experiment.py`) to execute sequentially, one after another, rather than in parallel (which is the default).
+    ```bash
+    python pipeline.py --experiment_dir experiments/my_small_test --sequential
+    ```
+
+-   `--workers <number>`:
+    Specify the number of parallel worker processes to use when running the simulation experiments. If not provided, `run_experiment.py` defaults to using the number of CPU cores available.
+    ```bash
+    python pipeline.py --experiment_dir experiments/my_small_test --workers 4
+    ```
+
+### Workflow
+
+The `pipeline.py` script performs the following steps in order:
+
+1.  **Generates Design Table**: Calls `src/NPS_SIM/generate_design.py` using the `settings.json` found in your `--experiment_dir` to create `design_table.csv`.
+2.  **Runs Experiments**: Calls `src/NPS_SIM/run_experiment.py` to execute all simulation runs defined in `design_table.csv`, saving results (logs, Case_DBs with prediction errors) into subfolders within your `--experiment_dir`.
+3.  **Generates Analysis Report**: Calls `analysis/report_from_results.py` to create a comprehensive PDF report summarizing the outcomes of the experiments, including metric definitions and experiment settings tables.
+
+The script will print progress and error messages for each step. If any step fails, the pipeline will halt. 

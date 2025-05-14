@@ -12,6 +12,21 @@ Usage:
 """
 
 import os
+import sys # Import sys to modify path
+
+# --- Add project root to sys.path to allow absolute imports from analysis package ---
+# This assumes report_from_results.py is in a subdirectory (e.g., 'analysis') of the project root.
+# current_dir = os.path.dirname(os.path.abspath(__file__))
+# project_root = os.path.dirname(current_dir)
+# if project_root not in sys.path:
+#     sys.path.insert(0, project_root)
+# ---- Simpler way if script is always one level down ----
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, os.pardir))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+# --- End of sys.path modification ---
+
 import argparse
 import pandas as pd
 import numpy as np
@@ -25,6 +40,7 @@ import re # Added import for regex
 import textwrap # Added import for text wrapping
 import plotly.graph_objects as go # Added for Plotly table
 import json # Added for loading settings.json
+from analysis.prediction_error_utils import calculate_and_add_prediction_errors # Reverted to absolute import
 
 # Set seaborn style
 sns.set_style("whitegrid")
@@ -257,6 +273,11 @@ def generate_report(experiment_dir, output_pdf=None):
         results['case_queued_percent'] = np.where(results['cases_arrived'] > 0,
                                                 (results['case_queued'] / results['cases_arrived']) * 100, 0)
     
+    # Calculate and add prediction error metrics
+    print("INFO: Calculating prediction error metrics...")
+    results = calculate_and_add_prediction_errors(results, experiment_dir)
+    print("INFO: Prediction error metrics calculation complete.")
+
     # Save the processed results as experiment.csv
     experiment_csv_path = os.path.join(experiment_dir, "experiment.csv")
     results.to_csv(experiment_csv_path, index=False)
@@ -294,6 +315,9 @@ def generate_report(experiment_dir, output_pdf=None):
             add_settings_table_page(pdf, settings_data, os.path.basename(os.path.normpath(experiment_dir)))
         else:
             print("Warning: Experiment settings page could not be generated.")
+        
+        # Add Prediction Error Histograms
+        plot_prediction_error_histograms(results, pdf)
         
         # Generate boxplots
         plot_boxplots(results, pdf)
@@ -340,6 +364,14 @@ def plot_boxplots(results, pdf):
         plt.title(f'{label} by Priority Scheme and Number of Agents', fontsize=14)
         plt.xlabel('Priority Scheme', fontsize=12)
         plt.ylabel(label, fontsize=12)
+        
+        # Apply specific y-axis limits
+        if metric == 'closed_percent' or metric == 'case_queued_percent':
+            plt.ylim(0, 100)
+        elif metric == 'closed_avg_initial_delay':
+            current_ylim = plt.gca().get_ylim()
+            plt.ylim(0, current_ylim[1]) # Set lower bound to 0, keep upper bound
+
         plt.xticks(rotation=45)
         plt.legend(title='Number of Agents', bbox_to_anchor=(1.05, 1), loc='upper left')
         plt.tight_layout()
@@ -379,6 +411,12 @@ def plot_histograms(results, pdf):
         plt.title(f'Distribution of {label}', fontsize=14)
         plt.xlabel(label, fontsize=12)
         plt.ylabel('Count', fontsize=12)
+
+        # Apply specific x-axis limits for relevant metrics
+        if metric == 'all_avg_initial_delay':
+            current_xlim = plt.gca().get_xlim()
+            plt.xlim(0, current_xlim[1]) # Set lower bound to 0, keep upper bound
+
         plt.tight_layout()
         
         pdf.savefig()
@@ -594,6 +632,14 @@ def plot_performance_comparison(results, pdf, ordered_schemes):
         plt.title(config['title'], fontsize=16)
         plt.xlabel('Priority Scheme', fontsize=12)
         plt.ylabel(config['y_label'], fontsize=12)
+        
+        # Apply specific y-axis limits
+        if metric == 'closed_avg_initial_delay':
+            current_ylim = plt.gca().get_ylim()
+            plt.ylim(0, current_ylim[1]) # Set lower bound to 0, keep upper bound
+        elif metric == 'closed_percent': # Assuming closed_percent might be added here later
+            plt.ylim(0,100)
+
         plt.xticks(rotation=45, ha="right") # Ensure x-axis labels are readable
         plt.tight_layout()
         pdf.savefig()
@@ -647,6 +693,48 @@ def plot_performance_comparison(results, pdf, ordered_schemes):
         
         print("DEBUG: Finished processing all dependent variables for regression.")
         # --- End of Regression Analysis Section ---
+
+def plot_prediction_error_histograms(results, pdf):
+    """
+    Create histograms for MAE of TT and NPS prediction errors.
+    """
+    error_metrics_to_plot = {
+        'mae_TT_pred_error': 'MAE of Throughput Time Prediction Error (hours)',
+        'mae_NPS_pred_error': 'MAE of NPS Prediction Error'
+    }
+
+    for metric_col, label in error_metrics_to_plot.items():
+        if metric_col not in results.columns or results[metric_col].isna().all():
+            print(f"Warning: Column {metric_col} for histogram is missing or all NaN. Skipping histogram.")
+            # Create a blank page with a message if preferred, or just skip
+            plt.figure(figsize=(10, 6))
+            plt.text(0.5, 0.5, f'Data for "{label}" is not available or all NaN.', 
+                     ha='center', va='center', fontsize=12, color='red')
+            plt.title(f'Histogram for {label}', fontsize=14)
+            plt.axis('off')
+            pdf.savefig()
+            plt.close()
+            continue
+
+        plt.figure(figsize=(10, 6))
+        sns.histplot(
+            data=results,
+            x=metric_col,
+            bins=20, # Adjust bin count as needed
+            kde=True,
+            color='orange'
+        )
+        plt.title(f'Distribution of {label}', fontsize=14)
+        plt.xlabel(label, fontsize=12)
+        plt.ylabel('Frequency of Runs', fontsize=12)
+
+        # Set lower x-axis limit to 0 for MAE plots
+        current_xlim = plt.gca().get_xlim()
+        plt.xlim(0, current_xlim[1]) # Set lower bound to 0, keep upper bound
+
+        plt.tight_layout()
+        pdf.savefig()
+        plt.close()
 
 def main():
     """Main function to parse arguments and generate the report."""
