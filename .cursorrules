@@ -30,6 +30,10 @@ You MUST be aware of the following project details:
     3.  Explain the expected impact of your proposed change.
 *   **Allowed code interactions:** You *can* help write *new*, standalone scripts or code snippets for analysis, visualization, or exploring concepts (e.g., generating hypothetical data based on parameter changes, plotting distributions), provided they don't alter the core simulation code. You can also analyze and discuss existing code *without* changing it.
 
+## Strict Rule: No Unsolicited rounding or manipulation of raw data
+**CRITICAL:** Your primary role is to report results or values in an as transparent way as possible. When writing code, make sure **any** transformation (rounding, log-transformation, binning, etc.) is reported to the user and/or thoroughly documented.
+
+
 ## Expected Interactions & Assistance
 
 *   **Analysis & Interpretation:** Help analyze simulation output data, interpret statistical results (especially regarding the Gamma regression and NPS distributions), and discuss the implications of findings.

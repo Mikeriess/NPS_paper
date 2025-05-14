@@ -9,6 +9,7 @@ import argparse
 import os
 import sys
 from pathlib import Path
+import numpy as np
 from helpers.DoE import build_full_fact, fix_label_values
 
 def create_example_json():
@@ -79,8 +80,8 @@ def main():
     df.F_days = df.F_days.astype(int)
     df.F_burn_in = df.F_burn_in.astype(int)
     
-    # Placeholder variables: -1 for unobserved
-    placeholder_variables = [
+    # Placeholder variables
+    float_placeholder_variables = [
         'closed_avg_simulated_NPS', 'closed_avg_simulated_throughput_time',
         'closed_avg_predicted_NPS', 'closed_avg_predicted_throughput_time',
         'closed_avg_predicted_NPS_priority', 'closed_avg_initial_delay',
@@ -89,12 +90,18 @@ def main():
         'all_avg_predicted_NPS', 'all_avg_predicted_throughput_time',
         'all_avg_predicted_NPS_priority', 'all_avg_initial_delay',
         'all_avg_activity_start_delay', 'all_avg_duration_delayed',
-        'cases_arrived', 'cases_closed', 'case_queued',
-        'cases_assigned_at_end', 'min_tracelen', 'max_tracelen',
         'Simulation_duration_min'
     ]
     
-    for var in placeholder_variables:
+    integer_placeholder_variables = [
+        'cases_arrived', 'cases_closed', 'case_queued',
+        'cases_assigned_at_end', 'min_tracelen', 'max_tracelen'
+    ]
+
+    for var in float_placeholder_variables:
+        df[var] = np.nan
+
+    for var in integer_placeholder_variables:
         df[var] = -1
     
     # Sort experiments and add metadata

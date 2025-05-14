@@ -1,12 +1,12 @@
 # Queue Prioritization NPS Simulation Analysis Tool
 
-This folder contains tools for analyzing the results of NPS queue prioritization simulation experiments. The main tool is `report.py`, which generates detailed visual reports from experiment results.
+This folder contains tools for analyzing the results of NPS queue prioritization simulation experiments. The main tool is `report_from_results.py`, which generates detailed visual reports from experiment results.
 
-## `report.py` - Analysis Report Generator
+## `report_from_results.py` - Analysis Report Generator
 
 ### Overview
 
-The `report.py` script analyzes simulation experiment results and generates a comprehensive PDF report with visualizations to help understand the effects of parameter changes on NPS scores and queue prioritization methods.
+The `report_from_results.py` script analyzes simulation experiment results and generates a comprehensive PDF report with visualizations to help understand the effects of parameter changes on NPS scores and queue prioritization methods.
 
 ### Requirements
 
@@ -16,14 +16,16 @@ The script requires the following Python packages:
 - matplotlib
 - seaborn
 - scipy
+- plotly
+- kaleido
 
 ### Usage
 
 ```bash
-python analysis/report.py --dest <experiment_directory>
+python analysis/report_from_results.py --dest <experiment_directory>
 ```
 
-Where `<experiment_directory>` is the path to an experiment results directory (e.g., `experiments/test1`).
+Where `<experiment_directory>` is the path to an experiment results directory (e.g., `experiments/simple_fcfs`).
 
 #### Optional Arguments
 
@@ -32,36 +34,37 @@ Where `<experiment_directory>` is the path to an experiment results directory (e
 ### Example
 
 ```bash
-python analysis/report.py --dest experiments/test1
+python analysis/report_from_results.py --experiment experiments/simple_fcfs
 ```
 
-This will generate a PDF report in the `experiments/test1` directory with analysis of all the simulation runs in that experiment.
+This will generate a PDF report in the `experiments/simple_fcfs` directory with analysis of all the simulation runs in that experiment.
 
 ### Generated Report Contents
 
 The PDF report includes the following visualizations and analyses:
 
-1. **Title Page and Experiment Summary**
-   - Overview of the experiment parameters
-   - Summary statistics table for each prioritization method
+1. **Title Page**
+   * Basic information about the report generation.
 
-2. **NPS Distribution Analysis**
-   - Density plots showing the distribution of NPS scores for each prioritization method
-   - Comparative distributions across different parameter combinations
+2. **Metric Definitions** (New Page)
+   * A table explaining each key metric presented in the subsequent plots and tables of the report. Sourced from `report_metric_definitions.md`.
 
-3. **Parameter Effect Analysis**
-   - Heatmaps showing how NPS bias and throughput time effect parameters impact:
-     - Average NPS scores
-     - Average throughput times
+3. **Experiment Design Factors & Levels** (New Page)
+   * A table displaying the factors and their corresponding levels used in the experiment, loaded from the `settings.json` file in the experiment directory.
 
-4. **Method Comparison**
-   - Bar charts comparing NPS scores across different prioritization methods
-   - Bar charts comparing throughput times across different prioritization methods
-   - Radar charts for multi-metric comparison (when applicable)
+4. **Distribution Analysis (Boxplots & Histograms)**
+   * Boxplots comparing key performance metrics (e.g., Simulated NPS, Throughput Time, Closed Cases %, Initial Delay) across different priority schemes, often with a hue for the number of agents.
+   * Histograms showing the distribution of various predicted and actual metrics (e.g., Predicted Throughput Time, Predicted NPS, Max Trace Length).
 
-5. **Sensitivity Analysis**
-   - Line plots showing how NPS scores change with parameter changes
-   - Threshold analysis identifying when the NPS method becomes superior to alternatives
+5. **Performance Comparison & Detailed Metrics (formerly part of Method Comparison & NPS Distribution)**
+   * Boxplots comparing key performance metrics (Simulated NPS, Simulated Throughput Time, Closed Cases per run, Initial Delay per run) by priority scheme, colored by the number of agents. (This section now uses boxplots for per-run distributions).
+   * The `plot_nps_distribution` function still generates a boxplot for NPS by scheme and a summary table (this might be redundant or complementary to the above).
+
+6. **Regression Analysis (Parameter Effect / Sensitivity Analysis)**
+   * OLS Regression summaries and (potentially plots, though current implementation focuses on summary text in PDF) exploring the relationship between simulation input factors (e.g., `F_NPS_dist_bias`, `F_tNPS_wtime_effect_bias`, `F_number_of_agents`, `F_priority_scheme`) and key output metrics (e.g., Simulated Throughput Time, Proportion of Closed Cases, Simulated NPS).
+   * Titles for these sections are now formatted for better readability.
+
+*(Note: The exact set of plots and their order can be further customized in the script. The descriptions for "Parameter Effect Analysis", "Method Comparison", and "Sensitivity Analysis" from the old README are now more specifically covered by points 4, 5, and 6 above. Heatmaps and Radar charts mentioned previously are not explicitly generated by the current version of `plot_performance_comparison` or other standard plotting functions unless they are part of custom additions not covered in our recent modifications.)*
 
 ## Report Interpretation
 

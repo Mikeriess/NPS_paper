@@ -16,14 +16,213 @@ import argparse
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.image as mpimg # Added for reading image
 import seaborn as sns
 from matplotlib.backends.backend_pdf import PdfPages
 from datetime import datetime
 import statsmodels.formula.api as smf # Added import for statsmodels
+import re # Added import for regex
+import textwrap # Added import for text wrapping
+import plotly.graph_objects as go # Added for Plotly table
+import json # Added for loading settings.json
 
 # Set seaborn style
 sns.set_style("whitegrid")
 plt.rcParams.update({'font.size': 10})
+
+# --- Functions to add Metric Definitions Page --- START
+def parse_metric_definitions(filepath):
+    """
+    Parse metric definitions from a structured markdown file.
+    Expects lines like: *   **`metric_key`**: Description
+    """
+    definitions = {}
+    try:
+        with open(filepath, 'r') as f:
+            content = f.readlines()
+        
+        # Regex to capture the metric key and its description
+        # It looks for: optional spaces, asterisk, spaces, two asterisks, backtick, key, backtick, two asterisks, colon, space, description
+        pattern = re.compile(r"^\s*\*\s*\*\*`([^`]+)`\*\*:\s*(.+)$")
+        
+        for line in content:
+            match = pattern.match(line.strip())
+            if match:
+                key = match.group(1).strip()
+                description = match.group(2).strip()
+                definitions[key] = description
+    except FileNotFoundError:
+        print(f"Error: Metric definitions file not found at {filepath}")
+        return None
+    except Exception as e:
+        print(f"Error parsing metric definitions file {filepath}: {e}")
+        return None
+    return definitions
+
+def add_metric_definitions_page(pdf, metric_definitions):
+    """
+    Add a page to the PDF with metric definitions.
+    """
+    # Create a new figure for this specific page with a specified DPI
+    fig = plt.figure(figsize=(11.7, 8.27), dpi=300) # A4 landscape, explicit DPI
+    plt.axis('off') # Turn off axis for the entire figure page
+
+    page_title = "Metric Definitions"
+    # Intro text will be part of the Plotly table's title or not included if table is self-explanatory
+    
+    # Convert definitions to DataFrame
+    df_definitions = pd.DataFrame(list(metric_definitions.items()), columns=['Metric', 'Description'])
+
+    # Pre-process descriptions for HTML line breaks for Plotly table cell wrapping
+    # Estimate a reasonable wrap width for the description column
+    # This is a bit of trial and error based on typical A4 page proportions
+    # and font sizes used by Plotly. Let's aim for about 100-120 chars.
+    description_wrap_width = 100 # Reduced from 110
+    df_definitions['Metric'] = df_definitions['Metric'].apply(
+        lambda x: '<br>'.join(textwrap.wrap(x, width=30)) # Wrap metric names too if they get very long
+    )
+    df_definitions['Description'] = df_definitions['Description'].apply(
+        lambda x: '<br>'.join(textwrap.wrap(x, width=description_wrap_width))
+    )
+
+    # Create Plotly table figure
+    table_fig = go.Figure(data=[go.Table(
+        columnwidth = [30,70], 
+        header=dict(values=['<b>Metric</b>', '<b>Description</b>'],
+                    fill_color='paleturquoise',
+                    align=['left', 'left'], font=dict(size=14)), # Increased header font size to 14
+        cells=dict(values=[df_definitions.Metric, df_definitions.Description],
+                   fill_color='lavender',
+                   align=['left', 'left'],
+                   font=dict(size=12), # Increased cell font size to 12
+                   height=55  # Increased cell height to 55
+                  )
+    )])
+
+    table_fig.update_layout(
+        title_text=page_title,
+        title_x=0.5,
+        margin=dict(l=20, r=20, t=60, b=20), # Increased top margin for title
+        # Explicitly set a height and width for the table image to guide aspect ratio
+        width=1100, # Adjusted width for better A4 landscape fit (approx 11.7in * 96 DPI)
+        height=770  # Adjusted height for better A4 landscape fit (approx 8.27in * 96 DPI)
+    )
+
+    temp_image_path = "temp_metrics_table.png"
+    try:
+        # Using scale=6 for very high-resolution source PNG
+        table_fig.write_image(temp_image_path, scale=6, engine='kaleido') 
+        
+        img = mpimg.imread(temp_image_path)
+        
+        # Display the image. imshow will scale it to fit the axes 
+        # (which cover the figure since axis is off).
+        plt.imshow(img)
+        # No need for fig.clf() as it's a new figure for this page
+        # No need for plt.axis('off') again as it's done for the figure
+        
+        pdf.savefig(fig) # Save the Matplotlib figure (which now contains the table image)
+    except Exception as e:
+        print(f"Error generating or adding metric definitions table image: {e}")
+    finally:
+        if os.path.exists(temp_image_path):
+            os.remove(temp_image_path) # Clean up temporary file
+
+    # No plt.close(fig) here if fig is the one passed from generate_report for this page.
+    # If we created a new fig = plt.figure() specific for this page, then we should close it.
+    # For now, assuming fig is the current page canvas. Let's be explicit.
+    # The original `add_metric_definitions_page` created its own `fig`. We should stick to that.
+    # Corrected logic from thought process: this function *should* create and close its own fig.
+    # The `fig` variable used above `fig = plt.figure(figsize=(11.7, 8.27))` was local.
+    # The pdf.savefig(fig) call uses this local fig.
+    # So, plt.close(fig) is correct if fig is defined locally as it was.
+    plt.close(fig) # Close the local figure used for this page.
+
+# --- Functions to add Metric Definitions Page --- END
+
+# --- Functions to add Experiment Settings Page --- START
+def load_experiment_settings(experiment_dir):
+    """
+    Load experiment settings from settings.json in the experiment directory.
+    """
+    settings_path = os.path.join(experiment_dir, "settings.json")
+    settings_list = []
+    try:
+        with open(settings_path, 'r') as f:
+            data = json.load(f)
+        for key, value in data.items():
+            if isinstance(value, list):
+                levels_str = ', '.join(map(str, value)) # Convert list of levels to string
+            else:
+                levels_str = str(value)
+            settings_list.append([key, levels_str])
+    except FileNotFoundError:
+        print(f"Error: settings.json not found at {settings_path}")
+        return None
+    except json.JSONDecodeError:
+        print(f"Error: Could not decode JSON from {settings_path}")
+        return None
+    except Exception as e:
+        print(f"Error loading or parsing settings.json: {e}")
+        return None
+    return settings_list
+
+def add_settings_table_page(pdf, settings_list, experiment_name):
+    """
+    Add a page to the PDF with experiment settings table.
+    """
+    fig = plt.figure(figsize=(11.7, 8.27), dpi=300) # A4 landscape, explicit DPI
+    plt.axis('off')
+
+    page_title = f"Experiment Design Factors & Levels: {experiment_name}"
+    
+    df_settings = pd.DataFrame(settings_list, columns=['Factor', 'Levels'])
+
+    factor_wrap_width = 35
+    levels_wrap_width = 90 
+
+    df_settings['Factor'] = df_settings['Factor'].apply(
+        lambda x: '<br>'.join(textwrap.wrap(x, width=factor_wrap_width))
+    )
+    df_settings['Levels'] = df_settings['Levels'].apply(
+        lambda x: '<br>'.join(textwrap.wrap(x, width=levels_wrap_width))
+    )
+
+    table_fig = go.Figure(data=[go.Table(
+        columnwidth = [30,70], # Factor: 30%, Levels: 70%
+        header=dict(values=['<b>Factor</b>', '<b>Levels</b>'],
+                    fill_color='lightskyblue', # Different color for this table header
+                    align=['left', 'left'], font=dict(size=14)), # Increased header font size to 14
+        cells=dict(values=[df_settings.Factor, df_settings.Levels],
+                   fill_color='lightcyan',   # Different color for these cells
+                   align=['left', 'left'],
+                   font=dict(size=12), # Increased cell font size to 12
+                   height=55 # Slightly increased cell height for larger font
+                  )
+    )])
+
+    table_fig.update_layout(
+        title_text=page_title,
+        title_x=0.5,
+        margin=dict(l=20, r=20, t=60, b=20),
+        width=1100, 
+        height=770  
+    )
+
+    temp_image_path = "temp_settings_table.png"
+    try:
+        table_fig.write_image(temp_image_path, scale=6, engine='kaleido') 
+        
+        img = mpimg.imread(temp_image_path)
+        plt.imshow(img)
+        pdf.savefig(fig)
+    except Exception as e:
+        print(f"Error generating or adding settings table image: {e}")
+    finally:
+        if os.path.exists(temp_image_path):
+            os.remove(temp_image_path) 
+    plt.close(fig) 
+# --- Functions to add Experiment Settings Page --- END
 
 def load_results(experiment_dir):
     """Load the design table file and filter for completed runs."""
@@ -41,21 +240,27 @@ def generate_report(experiment_dir, output_pdf=None):
     """
     Generate a PDF report with analysis visualizations.
     """
+    print("DEBUG: ===== ENTERING generate_report FUNCTION =====")
     # Load the experiment results
     results = load_results(experiment_dir)
     
-    # Define a consistent order for priority schemes to use across all plots
-    # Using the standard order: FCFS (baseline), LRTF, SRTF, NPS
-    priority_order = ['FCFS', 'LRTF', 'SRTF', 'NPS']
+    if results.empty:
+        print(f"No completed runs (Done == 1) found in {os.path.join(experiment_dir, 'design_table.csv')}.")
+        print("Report cannot be generated. Please complete some experiment runs first.")
+        return None
     
-    # Filter to only include schemes that exist in the data
-    available_schemes = sorted(results['F_priority_scheme'].unique())
-    ordered_schemes = [scheme for scheme in priority_order if scheme in available_schemes]
+    # Calculate additional metrics if needed
+    if 'cases_arrived' in results.columns and 'cases_closed' in results.columns:
+        results['closed_percent'] = np.where(results['cases_arrived'] > 0, 
+                                           (results['cases_closed'] / results['cases_arrived']) * 100, 0)
+    if 'cases_arrived' in results.columns and 'case_queued' in results.columns:
+        results['case_queued_percent'] = np.where(results['cases_arrived'] > 0,
+                                                (results['case_queued'] / results['cases_arrived']) * 100, 0)
     
-    # Add any schemes from the data that weren't in our predefined order
-    for scheme in available_schemes:
-        if scheme not in ordered_schemes:
-            ordered_schemes.append(scheme)
+    # Save the processed results as experiment.csv
+    experiment_csv_path = os.path.join(experiment_dir, "experiment.csv")
+    results.to_csv(experiment_csv_path, index=False)
+    print(f"Experiment data saved to: {experiment_csv_path}")
     
     # Define output PDF path
     if output_pdf is None:
@@ -75,171 +280,109 @@ def generate_report(experiment_dir, output_pdf=None):
         pdf.savefig()
         plt.close()
         
-        # Summary table
-        plt.figure(figsize=(12, 12))
-        plt.axis('off')
-        plt.text(0.5, 0.97, 'Experiment Summary', ha='center', fontsize=18, weight='bold')
-        
-        # Create summary statistics
-        summary_text = [
-            f"Total Runs: {len(results)}", # Will now reflect total *completed* runs if filtering is applied
-            f"Priority Schemes: {', '.join(sorted(results['F_priority_scheme'].unique()))}",
-        ]
-        
-        # Add parameter information if available
-        if 'F_NPS_dist_bias' in results.columns:
-            summary_text.append(f"NPS Bias Values: {', '.join([str(x) for x in sorted(results['F_NPS_dist_bias'].unique())])}")
-        
-        if 'F_tNPS_wtime_effect_bias' in results.columns:
-            summary_text.append(f"Effect Multiplier Values: {', '.join([str(x) for x in sorted(results['F_tNPS_wtime_effect_bias'].unique())])}")
-        
-        y_pos = 0.92
-        for line in summary_text:
-            plt.text(0.5, y_pos, line, ha='center', fontsize=14)
-            y_pos -= 0.04
-        
-        # Add more vertical space before "Overall Statistics"
-        y_pos -= 0.04
-        
-        # Add overall statistics
-        plt.text(0.5, y_pos, 'Overall Statistics', ha='center', fontsize=16, weight='bold')
-        
-        # Create a summary table with key metrics - Using all the requested metrics
-        # First calculate closed_percent
-        # Ensure 'cases_arrived' is not zero to avoid division by zero
-        if 'cases_arrived' in results.columns and 'cases_closed' in results.columns:
-            results['closed_percent'] = np.where(results['cases_arrived'] > 0, (results['cases_closed'] / results['cases_arrived']) * 100, 0)
+        # Add Metric Definitions Page
+        metric_definitions_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "report_metric_definitions.md")
+        metric_definitions = parse_metric_definitions(metric_definitions_path)
+        if metric_definitions:
+            add_metric_definitions_page(pdf, metric_definitions)
         else:
-            # Handle cases where these columns might be missing, though they are expected from design_table.csv
-            results['closed_percent'] = 0 
+            print("Warning: Metric definitions page could not be generated.")
         
-        overall_stats_cols = [
-            # Case metrics
-            'cases_arrived', 'cases_assigned_at_end', 'case_queued', 'cases_closed', 'closed_percent',
-            # Predicted metrics
-            'closed_avg_predicted_NPS', 'closed_avg_predicted_NPS_priority', 
-            'closed_avg_predicted_throughput_time',
-            # Simulated metrics
-            'closed_avg_simulated_NPS', 
-            'closed_avg_simulated_throughput_time',
-            'closed_avg_initial_delay'
-        ]
-        # Filter out any columns not present in results to prevent errors during groupby
-        available_overall_stats_cols = [col for col in overall_stats_cols if col in results.columns]
+        # Add Experiment Settings Page
+        settings_data = load_experiment_settings(experiment_dir)
+        if settings_data:
+            add_settings_table_page(pdf, settings_data, os.path.basename(os.path.normpath(experiment_dir)))
+        else:
+            print("Warning: Experiment settings page could not be generated.")
         
-        overall_stats = results.groupby('F_priority_scheme')[
-            available_overall_stats_cols
-        ].mean().reset_index()
+        # Generate boxplots
+        plot_boxplots(results, pdf)
         
-        # Transpose the table - schemes become columns, metrics become rows
-        schemes = ordered_schemes
-        
-        # Add scheme names as column headers with spacing
-        x_positions = [0.35, 0.5, 0.65, 0.8]  # Adjust these positions if needed
-        for i, scheme in enumerate(schemes):
-            plt.text(x_positions[i], y_pos - 0.05, scheme, ha='center', fontsize=12, weight='bold')
-        
-        # Add row labels (metrics)
-        metric_names = [
-            'CASE METRICS',
-            'Total Cases',            # maps to cases_arrived
-            'Assigned Cases',         # maps to cases_assigned_at_end
-            'Queued Cases',           # maps to case_queued
-            'Closed Cases',           # maps to cases_closed
-            'Closed Percent (%)',     # calculated
+        # Generate histograms
+        plot_histograms(results, pdf)
+    
+        print("DEBUG: ===== CALLING plot_performance_comparison (contains regression) =====")
+        plot_performance_comparison(results, pdf, ordered_schemes=['FCFS', 'LRTF', 'SRTF', 'NPS'])
+
+    print(f"Report generated: {output_pdf}")
+    return output_pdf
+
+def plot_boxplots(results, pdf):
+    """
+    Create boxplots comparing metrics across priority schemes, colored by number of agents.
+    """
+    # Define the metrics to plot and their labels
+    metrics_config = {
+        'closed_avg_simulated_NPS': 'Simulated NPS',
+        'closed_avg_simulated_throughput_time': 'Simulated Throughput Time',
+        'closed_percent': 'Closed Cases %',
+        'case_queued_percent': 'Cases Queued %',
+        'closed_avg_initial_delay': 'Average Initial Delay'
+    }
+    
+    # Create a boxplot for each metric
+    for metric, label in metrics_config.items():
+        if metric not in results.columns:
+            print(f"Warning: Column {metric} not found in results")
+            continue
             
-            'PREDICTED METRICS',      # Renamed from ESTIMATED
-            'Mean Predicted NPS',     # maps to closed_avg_predicted_NPS
-            'Mean Predicted NPS Priority', # maps to closed_avg_predicted_NPS_priority
-            'Mean Predicted Throughput Time (h)', # maps to closed_avg_predicted_throughput_time
-            
-            'SIMULATED METRICS',
-            'Mean Simulated NPS',     # maps to closed_avg_simulated_NPS
-            'Mean Simulated Throughput Time (h)', # maps to closed_avg_simulated_throughput_time
-            'Mean Initial Delay (h)'  # maps to closed_avg_initial_delay
-        ]
+        plt.figure(figsize=(12, 6))
         
-        # Variables to track section headers
-        section_headers = ['CASE METRICS', 'PREDICTED METRICS', 'SIMULATED METRICS'] # Updated section header
+        # Create boxplot
+        sns.boxplot(
+            data=results,
+            x='F_priority_scheme',
+            y=metric,
+            hue='F_number_of_agents',
+            palette='viridis'
+        )
         
-        # Mapping of metrics to their corresponding columns in the dataframe
-        metric_map = {
-            # Case metrics
-            'Total Cases': 'cases_arrived',
-            'Assigned Cases': 'cases_assigned_at_end',
-            'Queued Cases': 'case_queued',
-            'Closed Cases': 'cases_closed',
-            'Closed Percent (%)': 'closed_percent',
-            
-            # Predicted metrics
-            'Mean Predicted NPS': 'closed_avg_predicted_NPS',
-            'Mean Predicted NPS Priority': 'closed_avg_predicted_NPS_priority',
-            'Mean Predicted Throughput Time (h)': 'closed_avg_predicted_throughput_time',
-            
-            # Simulated metrics
-            'Mean Simulated NPS': 'closed_avg_simulated_NPS',
-            'Mean Simulated Throughput Time (h)': 'closed_avg_simulated_throughput_time',
-            'Mean Initial Delay (h)': 'closed_avg_initial_delay'
-        }
-        
-        # Adjust y positions for the metrics - reduced spacing to fit all metrics
-        y_start = y_pos - 0.10
-        y_positions = [y_start - 0.025*i for i in range(len(metric_names))]
-        
-        # Add all metrics to the table
-        for i, metric_name in enumerate(metric_names):
-            # Make section headers bold and add spacing
-            if metric_name in section_headers:
-                plt.text(0.01, y_positions[i], metric_name, ha='left', fontsize=12, weight='bold', color='blue')
-                continue
-                
-            # Add regular metric names
-            plt.text(0.02, y_positions[i], metric_name, ha='left', fontsize=10)
-        
-        # Add the values from each scheme in the appropriate cell
-        for i, scheme in enumerate(schemes):
-            if scheme not in overall_stats['F_priority_scheme'].values:
-                continue
-                
-            scheme_data = overall_stats[overall_stats['F_priority_scheme'] == scheme].iloc[0]
-            
-            # Add each metric value
-            for j, metric_name in enumerate(metric_names):
-                # Skip section headers
-                if metric_name in section_headers:
-                    continue
-                
-                # Get the corresponding column name from the mapping
-                col_name = metric_map[metric_name]
-                if col_name in scheme_data:
-                    value = scheme_data[col_name]
-                    
-                    # Format differently based on metric type
-                    if 'Percent' in metric_name:
-                        formatted_value = f"{value:.1f}%"
-                    elif 'NPS' in metric_name or 'Time' in metric_name or 'Delay' in metric_name:
-                        formatted_value = f"{value:.2f}"
-                    else:
-                        formatted_value = f"{value:.0f}"
-                    
-                    # Find correct position for the value
-                    pos_idx = [k for k, name in enumerate(metric_names) if name == metric_name][0]
-                    plt.text(x_positions[i], y_positions[pos_idx], formatted_value, ha='center', fontsize=10)
-        
-        # Increase figure size to fit all the metrics
-        plt.gcf().set_size_inches(12, 14)
+        plt.title(f'{label} by Priority Scheme and Number of Agents', fontsize=14)
+        plt.xlabel('Priority Scheme', fontsize=12)
+        plt.ylabel(label, fontsize=12)
+        plt.xticks(rotation=45)
+        plt.legend(title='Number of Agents', bbox_to_anchor=(1.05, 1), loc='upper left')
+        plt.tight_layout()
         
         pdf.savefig()
         plt.close()
-        
-        # 1. NPS distribution plot
-        plot_nps_distribution(results, pdf, ordered_schemes)
-        
-        # 2 & 3. Performance comparison plots
-        plot_performance_comparison(results, pdf, ordered_schemes)
+
+def plot_histograms(results, pdf):
+    """
+    Create histograms for specified metrics.
+    """
+    # Define the metrics to plot and their labels
+    metrics_config = {
+        'closed_avg_predicted_throughput_time': 'Predicted Throughput Time',
+        'closed_avg_predicted_NPS': 'Predicted NPS',
+        'closed_avg_predicted_NPS_priority': 'Predicted NPS Priority',
+        'max_tracelen': 'Maximum Trace Length',
+        'all_avg_initial_delay': 'Average Initial Delay'
+    }
     
-    print(f"Report generated: {output_pdf}")
-    return output_pdf
+    # Create a histogram for each metric
+    for metric, label in metrics_config.items():
+        if metric not in results.columns:
+            print(f"Warning: Column {metric} not found in results")
+            continue
+            
+        plt.figure(figsize=(10, 6))
+        
+        # Create histogram
+        sns.histplot(
+            data=results,
+            x=metric,
+            bins=30,
+            kde=True
+        )
+        
+        plt.title(f'Distribution of {label}', fontsize=14)
+        plt.xlabel(label, fontsize=12)
+        plt.ylabel('Count', fontsize=12)
+        plt.tight_layout()
+        
+        pdf.savefig()
+        plt.close()
 
 def plot_nps_distribution(results, pdf, ordered_schemes):
     """
@@ -293,34 +436,25 @@ def plot_regression_analysis(results_df, pdf_object, dep_var_col, dep_var_label,
     """
     Perform OLS regression and plot the summary to a PDF page.
     """
-    plt.figure(figsize=(11.7, 16.5))  # A4 size in inches (landscape for summary)
-    plt.axis('off')
-    
-    formula_parts = [dep_var_col, "~"]
-    if predictor_cols_numerical:
-        formula_parts.append(" + ".join(predictor_cols_numerical))
-    
-    if predictor_col_categorical:
-        if predictor_cols_numerical: # Add '+' if numerical predictors are already there
-            formula_parts.append(f" + C({predictor_col_categorical})")
-        else:
-            formula_parts.append(f"C({predictor_col_categorical})") # No '+' if it's the first predictor
-            
-    if len(formula_parts) == 2: # Only dep_var ~ (i.e. no predictors)
-        plt.text(0.5, 0.5, f"No valid predictors found for {dep_var_label}.", ha='center', va='center', fontsize=12, color='red')
-        plt.title(f"Regression Analysis for: {dep_var_label} - SKIPPED", fontsize=14, y=0.98)
-        pdf_object.savefig()
-        plt.close()
-        return
-
-    formula = "".join(formula_parts)
-    
-    plt.title(f"Regression Analysis for: {dep_var_label}\\nFormula: {formula}", fontsize=14, y=0.97)
-
+    fig = None  # Initialize fig to None
     try:
-        # Ensure dependent variable is numeric
+        formula_parts = [dep_var_col, "~"]
+        if predictor_cols_numerical:
+            formula_parts.append(" + ".join(predictor_cols_numerical))
+        
+        if predictor_col_categorical:
+            if predictor_cols_numerical:
+                formula_parts.append(f" + C({predictor_col_categorical})")
+            else:
+                formula_parts.append(f"C({predictor_col_categorical})")
+                
+        if len(formula_parts) == 2:
+            print(f"INFO: No valid predictors found for {dep_var_label}. Skipping this regression plot.")
+            return # Don't create a figure or try to save
+
+        formula = "".join(formula_parts)
+
         results_df[dep_var_col] = pd.to_numeric(results_df[dep_var_col], errors='coerce')
-        # Drop rows where the dependent or any predictor variable is NaN before fitting
         cols_for_na_check = [dep_var_col] + predictor_cols_numerical
         if predictor_col_categorical:
             cols_for_na_check.append(predictor_col_categorical)
@@ -330,7 +464,6 @@ def plot_regression_analysis(results_df, pdf_object, dep_var_col, dep_var_label,
         if cleaned_df.empty or cleaned_df[dep_var_col].nunique() < 2:
             raise ValueError("Not enough data or variance in dependent variable after cleaning.")
 
-        # Check variance for numerical predictors in cleaned_df
         valid_numerical_predictors = []
         for p_col in predictor_cols_numerical:
             if cleaned_df[p_col].nunique() > 1:
@@ -338,12 +471,11 @@ def plot_regression_analysis(results_df, pdf_object, dep_var_col, dep_var_label,
             else:
                 print(f"Warning: Predictor '{p_col}' has no variance after NA drop for DV '{dep_var_label}', removing from this regression.")
         
-        # Reconstruct formula with only valid predictors
         formula_parts_cleaned = [dep_var_col, "~"]
         if valid_numerical_predictors:
             formula_parts_cleaned.append(" + ".join(valid_numerical_predictors))
         
-        if predictor_col_categorical and cleaned_df[predictor_col_categorical].nunique() > 1 :
+        if predictor_col_categorical and cleaned_df[predictor_col_categorical].nunique() > 1:
             if valid_numerical_predictors:
                  formula_parts_cleaned.append(f" + C({predictor_col_categorical})")
             else:
@@ -351,77 +483,129 @@ def plot_regression_analysis(results_df, pdf_object, dep_var_col, dep_var_label,
         elif predictor_col_categorical:
              print(f"Warning: Categorical predictor '{predictor_col_categorical}' has no variance after NA drop for DV '{dep_var_label}', removing from this regression.")
 
-
-        if len(formula_parts_cleaned) == 2: # Only dep_var ~ (i.e. no predictors left)
+        if len(formula_parts_cleaned) == 2:
              raise ValueError("No valid predictors left after checking variance post NA drop.")
         
         formula_cleaned = "".join(formula_parts_cleaned)
+        
+        # Create figure just before populating
+        fig = plt.figure(figsize=(11.7, 16.5)) # A4 size landscape
+        plt.axis('off')
 
+        print(f"DEBUG (plot_regression_analysis): Using formula: {formula_cleaned}")
+        if not cleaned_df[[dep_var_col] + valid_numerical_predictors].empty:
+            print(f"DEBUG (plot_regression_analysis): Cleaned DF head for {dep_var_label}:\\n{cleaned_df[[dep_var_col] + valid_numerical_predictors].head()}")
+        else:
+            print(f"DEBUG (plot_regression_analysis): Cleaned DF for {dep_var_label} is empty or predictors are missing after head().")
 
         model = smf.ols(formula_cleaned, data=cleaned_df).fit()
         summary_text = str(model.summary())
         
-        # Update title with the formula actually used
-        plt.gca().set_title(f"Regression Analysis for: {dep_var_label}\\nFormula: {formula_cleaned}", fontsize=14, y=0.97, wrap=True)
-        plt.text(0.01, 0.90, summary_text, family='monospace', fontsize=8, va='top', ha='left')
+        print(f"DEBUG (plot_regression_analysis): Summary text (first 300 chars) for {dep_var_label}:\\n{summary_text[:300]}")
+        
+        # Update title with the formula actually used, now with improved formatting
+        title_string = f"Regression Analysis for:\n{dep_var_label}\n\nFormula:\n{formula_cleaned}"
+        plt.title(title_string, fontsize=12, y=1.0, loc='left', wrap=True) # y=1.0 might need adjustment with more lines
+        # Adjust figure layout to make space for the multi-line title
+        plt.subplots_adjust(top=0.85) # Reduce top to make space if title is long
+        
+        plt.text(0.01, 0.90 - (title_string.count('\n') * 0.05) , summary_text, family='monospace', fontsize=8, va='top', ha='left') # Adjust y of summary
+        
+        pdf_object.savefig(fig)
 
     except Exception as e:
         error_message = f"Could not perform regression for {dep_var_label}.\\nError: {str(e)}"
         print(error_message)
+        # If fig was created, add error message to it, otherwise create a new one for the error
+        if fig is None:
+            fig = plt.figure(figsize=(11.7, 16.5))
+            plt.axis('off')
+        fig.clf() # Clear the figure in case it was partially populated
         plt.text(0.5, 0.5, error_message, ha='center', va='center', fontsize=10, color='red', wrap=True)
+        if pdf_object is not None: # Ensure pdf_object is valid before saving
+             pdf_object.savefig(fig)
 
-    pdf_object.savefig()
-    plt.close()
+    finally:
+        if fig is not None:
+            plt.close(fig) # Close the specific figure
 
 def plot_performance_comparison(results, pdf, ordered_schemes):
     """
     Plot key performance metrics for comparison.
-    - Average NPS
-    - Average Throughput Time
-    - Total Closed Cases
-    - Average Initial Delay
     """
     
     # Define metrics to plot, their y-axis labels, and titles
-    # Ensure these columns exist in the results DataFrame
     metrics_to_plot_config = {
-        'closed_avg_simulated_NPS': ('Average Simulated NPS (per run)', 'Overall Average Simulated NPS by Priority Scheme'),
-        'closed_avg_simulated_throughput_time': ('Average Simulated Throughput Time (h, per run)', 'Overall Average Simulated Throughput Time by Priority Scheme'),
-        'cases_closed': ('Total Closed Cases (sum across runs)', 'Total Closed Cases by Priority Scheme'), # This will now sum up 'cases_closed' per scheme
-        'closed_avg_initial_delay': ('Average Initial Delay (h, per run)', 'Overall Average Initial Delay by Priority Scheme')
+        'closed_avg_simulated_NPS': {
+            'type': 'boxplot',
+            'y_label': 'Average Simulated NPS (per run)',
+            'title': 'Distribution of Average Simulated NPS (per run) by Priority Scheme'
+        },
+        'closed_avg_simulated_throughput_time': {
+            'type': 'boxplot',
+            'y_label': 'Average Simulated Throughput Time (h, per run)',
+            'title': 'Distribution of Average Simulated Throughput Time (per run) by Priority Scheme'
+        },
+        'cases_closed': {
+            'type': 'boxplot',
+            'y_label': 'Closed Cases (per run)',
+            'title': 'Distribution of Closed Cases (per run) by Priority Scheme'
+        },
+        'closed_avg_initial_delay': {
+            'type': 'boxplot', # Changed from barplot
+            'y_label': 'Average Initial Delay (h, per run)', # Updated label
+            'title': 'Distribution of Average Initial Delay (per run) by Priority Scheme' # Updated title
+        }
     }
     
-    # Filter out metrics that are not in results.columns
-    available_metrics = {metric: config for metric, config in metrics_to_plot_config.items() if metric in results.columns}
+    available_metrics_config = {
+        metric: config for metric, config in metrics_to_plot_config.items() if metric in results.columns
+    }
 
-    # Create custom palette for consistent colors
     palette = sns.color_palette("viridis", n_colors=len(ordered_schemes))
     scheme_colors = {scheme: palette[i] for i, scheme in enumerate(ordered_schemes)}
 
-    for metric, (y_label, title) in available_metrics.items():
+    for metric, config in available_metrics_config.items():
         plt.figure(figsize=(10, 6))
         
-        # For 'cases_closed', we want to sum them up across runs for each scheme. For others, mean.
-        if metric == 'cases_closed':
-            plot_data = results.groupby('F_priority_scheme')[metric].sum().reindex(ordered_schemes).reset_index()
-        else:
+        if config['type'] == 'boxplot':
+            sns.boxplot(
+                x='F_priority_scheme',
+                y=metric,
+                data=results, # Use original results for boxplot per run
+                order=ordered_schemes,
+                palette="viridis",
+                hue='F_number_of_agents',
+                showfliers=False # Optionally hide fliers for cleaner plots
+            )
+            plt.legend(title='Number of Agents', bbox_to_anchor=(1.05, 1), loc='upper left')
+        elif config['type'] == 'barplot':
+            # For barplot, we show the mean of the per-run values
             plot_data = results.groupby('F_priority_scheme')[metric].mean().reindex(ordered_schemes).reset_index()
-
-        sns.barplot(x='F_priority_scheme', y=metric, data=plot_data, order=ordered_schemes, palette=scheme_colors, ci=None) # ci=None as we plot means of means or sums
+            sns.barplot(
+                x='F_priority_scheme',
+                y=metric,
+                data=plot_data,
+                order=ordered_schemes,
+                palette=scheme_colors,
+                errorbar=None # Changed from ci=None for newer seaborn versions
+            )
         
-        plt.title(title, fontsize=16)
+        plt.title(config['title'], fontsize=16)
         plt.xlabel('Priority Scheme', fontsize=12)
-        plt.ylabel(y_label, fontsize=12)
+        plt.ylabel(config['y_label'], fontsize=12)
+        plt.xticks(rotation=45, ha="right") # Ensure x-axis labels are readable
         plt.tight_layout()
         pdf.savefig()
         plt.close()
 
     # --- Regression Analysis Section ---
     if results.empty:
-        print("Skipping regression analysis as the results DataFrame is empty.")
+        print("DEBUG: Skipping regression analysis as the results DataFrame is empty.")
     else:
+        print("DEBUG: Entering regression analysis section.")
         predictor_cols_numerical = []
-        potential_numerical_predictors = ['F_NPS_dist_bias', 'F_tNPS_wtime_effect_bias', 'F_number_of_agents'] # Add other potential factors if needed
+        potential_numerical_predictors = ['F_NPS_dist_bias', 'F_tNPS_wtime_effect_bias', 'F_number_of_agents']
         
         for col_name in potential_numerical_predictors:
             if col_name in results.columns and pd.to_numeric(results[col_name], errors='coerce').nunique() > 1:
@@ -432,8 +616,10 @@ def plot_performance_comparison(results, pdf, ordered_schemes):
 
         categorical_predictor = 'F_priority_scheme' if 'F_priority_scheme' in results.columns and results['F_priority_scheme'].nunique() > 1 else None
         if 'F_priority_scheme' in results.columns and results['F_priority_scheme'].nunique() <=1 and categorical_predictor is None:
-            print("Categorical predictor 'F_priority_scheme' excluded due to single unique value.")
+            print("DEBUG: Categorical predictor 'F_priority_scheme' excluded due to single unique value.")
 
+        print(f"DEBUG: Numerical predictors selected: {predictor_cols_numerical}")
+        print(f"DEBUG: Categorical predictor selected: {categorical_predictor}")
 
         dependent_vars_config = {
             'closed_avg_simulated_throughput_time': 'Simulated Throughput Time',
@@ -444,20 +630,22 @@ def plot_performance_comparison(results, pdf, ordered_schemes):
         min_obs_for_regression = len(predictor_cols_numerical) + (results[categorical_predictor].nunique() if categorical_predictor and categorical_predictor in results else 1) + 2 # Basic rule of thumb: k+1 obs, adding a small margin
 
         for dep_var_col, dep_var_label in dependent_vars_config.items():
+            print(f"DEBUG: Processing regression for dependent variable: {dep_var_label} ({dep_var_col})")
             if dep_var_col in results.columns and pd.to_numeric(results[dep_var_col], errors='coerce').notnull().all():
                 # Ensure the dependent variable itself has variance
                 if results[dep_var_col].nunique() < 2:
-                    print(f"Skipping regression for '{dep_var_label}' (column '{dep_var_col}') as it has less than 2 unique values.")
+                    print(f"DEBUG: Skipping regression for '{dep_var_label}' (column '{dep_var_col}') as it has less than 2 unique values.")
                     continue
                 
                 # Check if there are enough data points
                 if len(results.dropna(subset=[dep_var_col] + predictor_cols_numerical + ([categorical_predictor] if categorical_predictor else []))) >= min_obs_for_regression:
                     plot_regression_analysis(results.copy(), pdf, dep_var_col, dep_var_label, predictor_cols_numerical, categorical_predictor)
                 else:
-                    print(f"Skipping regression for '{dep_var_label}' due to insufficient data points after potential NA drops (need at least {min_obs_for_regression}).")
+                    print(f"DEBUG: Skipping regression for '{dep_var_label}' due to insufficient data points after potential NA drops (need at least {min_obs_for_regression}).")
             else:
-                print(f"Skipping regression for '{dep_var_label}' as column '{dep_var_col}' is missing, not numeric, or all NaN.")
+                print(f"DEBUG: Skipping regression for '{dep_var_label}' as column '{dep_var_col}' is missing, not numeric, or all NaN.")
         
+        print("DEBUG: Finished processing all dependent variables for regression.")
         # --- End of Regression Analysis Section ---
 
 def main():
@@ -471,4 +659,4 @@ def main():
     generate_report(args.experiment, args.output)
 
 if __name__ == "__main__":
-    main() 
+    main()

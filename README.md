@@ -51,19 +51,19 @@ The design table specifies the parameters for each simulation run using a full f
 2. Create a directory for your experiment:
 
 ```bash
-mkdir -p experiments/experiment_name
+mkdir -p experiments/simple_fcfs
 ```
 
 3. Save your JSON settings file in the experiment directory:
 
 ```bash
-cp your_settings.json experiments/experiment_name/settings.json
+cp your_settings.json experiments/simple_fcfs/settings.json
 ```
 
 4. Generate the design table using the settings file:
 
 ```bash
-python src/NPS_SIM/generate_design.py --settings experiments/experiment_name/settings.json
+python src/NPS_SIM/generate_design.py --settings experiments/simple_fcfs/settings.json
 ```
 
 This will create a `design_table.csv` file in the same directory as your settings file. The design table contains all combinations of the parameter values specified in the JSON file, along with placeholders for result metrics.
@@ -73,12 +73,12 @@ This will create a `design_table.csv` file in the same directory as your setting
 Once you have generated a design table, you can run the experiments using the `run_experiment.py` script:
 
 ```bash
-python src/NPS_SIM/run_experiment.py --dest experiments/experiment_name
+python src/NPS_SIM/run_experiment.py --dest experiments/simple_fcfs
 ```
 
 ### Command Line Options
 
-- `--dest`: (Required) Path to the directory containing the design table and where results will be stored
+- `--dest`: (Required) Path to the directory containing the design table and where results will be stored. Example: `experiments/simple_fcfs`
 - `--parallel`: (Default: True) Run experiments in parallel
 - `--sequential`: Run experiments sequentially instead of in parallel
 - `--workers`: Number of parallel workers (default: CPU count)
@@ -86,13 +86,13 @@ python src/NPS_SIM/run_experiment.py --dest experiments/experiment_name
 Example with specific number of workers:
 
 ```bash
-python src/NPS_SIM/run_experiment.py --dest experiments/experiment_name --workers 4
+python src/NPS_SIM/run_experiment.py --dest experiments/simple_fcfs --workers 4
 ```
 
 Example running sequentially:
 
 ```bash
-python src/NPS_SIM/run_experiment.py --dest experiments/experiment_name --sequential
+python src/NPS_SIM/run_experiment.py --dest experiments/simple_fcfs --sequential
 ```
 
 ## Results
@@ -109,19 +109,20 @@ After running the experiments, the following files will be generated in your exp
 
 ```bash
 # Create experiment directory
-mkdir -p experiments/test1
+mkdir -p experiments/simple_fcfs
 
-# Create a settings file (or copy an existing one)
-cp example.json experiments/test1/settings.json
+# Create a settings file (or copy an existing one, e.g., example.json if provided)
+# For this example, let's assume you have 'your_settings.json'
+cp your_settings.json experiments/simple_fcfs/settings.json
 
 # Generate the design table
-python src/NPS_SIM/generate_design.py --settings experiments/test1/settings.json
+python src/NPS_SIM/generate_design.py --settings experiments/simple_fcfs/settings.json
 
 # Run the experiments
-python src/NPS_SIM/run_experiment.py --dest experiments/test1
+python src/NPS_SIM/run_experiment.py --dest experiments/simple_fcfs
 
 # Check the results
-ls -la experiments/test1
+ls -la experiments/simple_fcfs
 ```
 
 ## Additional Information
