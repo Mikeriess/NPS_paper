@@ -4,3 +4,4 @@ archive/
 experiments/
 src/NPS_SIM/results/
 *.DS_Store
+data/
