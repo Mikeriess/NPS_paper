@@ -1,0 +1,90 @@
+Term,Notes,Estimate,Std Error,P. Val.
+Intercept,,1.6645,0.1650,<.0001
+case_topic[d_2-z_4],,0.0200,0.0456,0.662
+case_topic[g_1-z_4],,-0.0538,0.0313,0.0857
+case_topic[j_1-z_4],,-0.0557,0.0213,0.0088
+case_topic[q_3-z_4],,0.1712,0.0587,0.0035
+case_topic[r_2-z_4],,0.0836,0.0383,0.0288
+case_topic[w_1-z_4],,-0.0609,0.0286,0.0334
+case_topic[w_2-z_4],,0.0119,0.0313,0.7043
+case_topic[z_2-z_4],,-0.0420,0.0433,0.3319
+case_topic[z_3-z_4],,0.1637,0.0369,<.0001
+activity[Email-Task-Reminder],,0.0180,0.1158,0.8767
+activity[Interaction-Task-Reminder],,0.1057,0.1319,0.4229
+activity_number,,0.0420,0.0177,0.0176
+resource[a_3-z_4],Forced in,0.1054,0.0962,0.2731
+resource[a_5-z_4],Forced in,0.0923,0.0831,0.2667
+resource[a_6-z_4],Forced in,0.0852,0.0975,0.3821
+resource[a_7-z_4],Forced in,0.2364,0.0860,0.006
+resource[a_8-z_4],Forced in,0.0508,0.0783,0.517
+resource[a_9-z_4],Forced in,0.1610,0.0843,0.0563
+resource[a_10-z_4],Forced in,0.1152,0.0770,0.1348
+resource[b_3-z_4],Forced in,0.0774,0.0895,0.387
+resource[b_4-z_4],Forced in,-0.0882,0.1011,0.383
+resource[b_5-z_4],Forced in,0.8784,0.3453,0.011
+resource[b_6-z_4],Forced in,0.0893,0.0856,0.2967
+resource[b_7-z_4],Forced in,0.3137,0.1395,0.0245
+resource[b_8-z_4],Forced in,-0.0646,0.0819,0.4304
+resource[c_2-z_4],Forced in,0.2095,0.1011,0.0383
+resource[c_3-z_4],Forced in,0.2009,0.0955,0.0354
+resource[d_1-z_4],Forced in,0.0000,0.0000,1
+resource[e_4-z_4],Forced in,0.0603,0.0805,0.454
+resource[e_5-z_4],Forced in,0.0896,0.0852,0.2929
+resource[e_6-z_4],Forced in,0.0874,0.0771,0.2566
+resource[e_7-z_4],Forced in,0.1154,0.0833,0.1658
+resource[f_2-z_4],Forced in,0.1227,0.0776,0.1141
+resource[f_3-z_4],Forced in,3.3625,0.2821,<.0001
+resource[f_4-z_4],Forced in,0.4485,0.0820,<.0001
+resource[g_9-z_4],Forced in,-0.0384,0.0836,0.6463
+resource[h_4-z_4],Forced in,0.2234,0.0943,0.0178
+resource[h_5-z_4],Forced in,0.2686,0.1076,0.0126
+resource[i_7-z_4],Forced in,-0.1436,0.0874,0.1002
+resource[i_9-z_4],Forced in,-0.1067,0.0805,0.1851
+resource[i_11-z_4],Forced in,0.1952,0.0913,0.0326
+resource[i_12-z_4],Forced in,0.0271,0.0846,0.7486
+resource[j_3-z_4],Forced in,0.1261,0.0851,0.1383
+resource[j_4-z_4],Forced in,0.0915,0.0793,0.2487
+resource[j_5-z_4],Forced in,0.0673,0.0833,0.4189
+resource[j_6-z_4],Forced in,0.0833,0.0806,0.3011
+resource[j_7-z_4],Forced in,0.0993,0.0940,0.291
+resource[j_8-z_4],Forced in,0.0984,0.0780,0.2071
+resource[j_9-z_4],Forced in,0.0467,0.0774,0.5465
+resource[j_10-z_4],Forced in,0.3716,0.1367,0.0065
+resource[l_4-z_4],Forced in,-0.0284,0.0786,0.7178
+resource[l_5-z_4],Forced in,0.0216,0.0820,0.7923
+resource[l_6-z_4],Forced in,0.7087,0.2148,0.001
+resource[l_7-z_4],Forced in,0.1292,0.0801,0.1068
+resource[m_6-z_4],Forced in,0.0067,0.1011,0.947
+resource[m_7-z_4],Forced in,3.0204,0.3968,<.0001
+resource[n_3-z_4],Forced in,0.1794,0.0841,0.0329
+resource[n_4-z_4],Forced in,0.1639,0.0866,0.0584
+resource[n_5-z_4],Forced in,0.0328,0.0759,0.6655
+resource[p_4-z_4],Forced in,0.1128,0.0811,0.1644
+resource[p_5-z_4],Forced in,0.1177,0.0781,0.1318
+resource[p_6-z_4],Forced in,0.0702,0.0790,0.3742
+resource[p_7-z_4],Forced in,0.2800,0.0901,0.0019
+resource[q_3-z_4],Forced in,-0.0533,0.1375,0.6986
+resource[q_4-z_4],Forced in,0.0172,0.0844,0.8384
+resource[r_2-z_4],Forced in,0.1459,0.0892,0.1018
+resource[r_3-z_4],Forced in,0.1851,0.0924,0.0452
+resource[r_4-z_4],Forced in,0.0482,0.0880,0.5838
+resource[r_5-z_4],Forced in,0.0932,0.0758,0.2188
+resource[r_6-z_4],Forced in,0.0661,0.0763,0.3857
+resource[r_7-z_4],Forced in,0.0686,0.0761,0.3672
+resource[r_9-z_4],Forced in,0.0918,0.0801,0.2517
+resource[s_1-z_4],Forced in,-0.0159,0.0883,0.8568
+resource[s_2-z_4],Forced in,0.0720,0.0808,0.3725
+resource[t_2-z_4],Forced in,0.4989,0.1339,0.0002
+resource[t_3-z_4],Forced in,0.1595,0.0835,0.0559
+resource[t_4-z_4],Forced in,0.0752,0.0816,0.3566
+resource[u_4-z_4],Forced in,0.0798,0.0853,0.3497
+resource[w_6-z_4],Forced in,0.0901,0.0924,0.3296
+resource[w_7-z_4],Forced in,0.3596,0.1477,0.0149
+resource[y_3-z_4],Forced in,0.0573,0.0922,0.5344
+resource[y_4-z_4],Forced in,0.5338,0.1891,0.0048
+resource[y_5-z_4],Forced in,0.1264,0.0812,0.1197
+resource[y_6-z_4],Forced in,0.2045,0.0903,0.0236
+resource[y_7-z_4],Forced in,0.2302,0.0991,0.0202
+resource[y_8-z_4],Forced in,0.1879,0.0977,0.0545
+resource[y_9-z_4],Forced in,0.0906,0.0869,0.2968
+resource[z_3-z_4],Forced in,0.1188,0.0828,0.1514

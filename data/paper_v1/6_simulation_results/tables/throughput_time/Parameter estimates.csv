@@ -1,0 +1,9 @@
+Term,Estimate,Std Error,P. Val.
+Intercept,1.4643,0.1000,<.0001
+priority_scheme[FCFS-NPS],0.0062,0.1414,0.9648
+number_of_agents[3-15],1.1057,0.1414,<.0001
+number_of_agents[5-15],1.0845,0.1414,<.0001
+number_of_agents[10-15],0.1983,0.1414,0.1608
+priority_scheme[FCFS-NPS]*number_of_agents[3-15],2.0979,0.2000,<.0001
+priority_scheme[FCFS-NPS]*number_of_agents[5-15],1.6278,0.2000,<.0001
+priority_scheme[FCFS-NPS]*number_of_agents[10-15],-0.0045,0.2000,0.9821

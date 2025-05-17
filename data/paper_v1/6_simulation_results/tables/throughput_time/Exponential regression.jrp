@@ -1,0 +1,31 @@
+﻿Open(
+	"C:\Users\Mike\Norwegian University of Life Sciences\Joachim Scholderer - Teaching\PhD Mike\Papers\CRM process improvement paper (In progress)\Analysis\6_simulation_results\all_results_100rep_3_5_10_15.jmp"
+);
+Fit Model(
+	Y( :avg_actual_throughput_time ),
+	Effects(
+		:F_priority_scheme,
+		:F_number_of_agents,
+		:F_priority_scheme * :F_number_of_agents
+	),
+	Personality( "Generalized Regression" ),
+	Generalized Distribution( "Exponential" ),
+	Run(
+		Set Random Seed( 1 ),
+		Fit(
+			Estimation Method( Maximum Likelihood ),
+			Validation Method( None ),
+			Multiple Comparisons( Effect( F_priority_scheme ) ),
+			Multiple Comparisons( Effect( F_number_of_agents ) ),
+			Multiple Comparisons(
+				Effect( Name( "F_priority_scheme*F_number_of_agents" ) ),
+				Student's t(
+					1,
+					All Pairwise Differences( 0 ),
+					All Pairwise Comparisons Scatterplot( 0 )
+				)
+			)
+		)
+	),
+	SendToReport( Dispatch( {}, "Model Comparison", OutlineBox, {Close( 1 )} ) )
+);

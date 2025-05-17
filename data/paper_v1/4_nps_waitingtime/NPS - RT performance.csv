@@ -1,0 +1,10 @@
+Measure,Training,Validation
+Number of rows,1327,570
+Sum of Frequencies,1327,570
+-LogLikelihood,2984.9923583,1274.3448944
+Number of Parameters,3,3
+BIC,5991.5567448,2567.726698
+AICc,5976.0028572,2554.7321917
+RSquare,0.0132049518,0.0320825105
+RASE,2.2944439431,2.2627073769
+Lambda Penalty,0,

@@ -1,0 +1,10 @@
+Response Distribution,Estimation Method,Validation Method,Nonzero Parameters,AICc,BIC,Generalized RSquare,Validation Generalized RSquare
+Exponential,Maximum Likelihood,None,5,11572.565369,11600.273785,0.3367143161,
+Exponential,Lasso,Holdback,5,8145.6742148,8171.5821748,0.2392739633,0.4963562575
+Exponential,Elastic Net,Holdback,5,8145.6742148,8171.5821748,0.2392739633,0.4963562575
+Weibull,Maximum Likelihood,None,6,10769.175359,10802.419088,0.066796197,
+Weibull,Lasso,Holdback,6,7623.2041959,7654.2846158,0.0532336727,0.0837969197
+Weibull,Elastic Net,Holdback,6,7623.2041959,7654.2846158,0.0532336727,0.0837969198
+Normal,Standard Least Squares,None,6,20708.499479,20741.743208,0.016197664,
+Normal,Lasso,Holdback,2,13124.154161,13134.526449,0,-0.000300433
+Normal,Elastic Net,Holdback,2,13124.154161,13134.526449,0,-0.000300433

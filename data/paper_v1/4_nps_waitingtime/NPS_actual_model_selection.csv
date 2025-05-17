@@ -1,0 +1,7 @@
+Distribution,Method,Parameters,R-Square,Val. R-Square
+Normal,Lasso,12,0.035271,0.037380
+Normal,Elastic Net,12,0.035271,0.037380
+Gamma,Lasso,10,0.040595,0.039694
+Gamma,Elastic Net,10,0.040595,0.039696
+Exponential,Lasso,10,0.001954,0.002102
+Exponential,Elastic Net,10,0.001954,0.002102

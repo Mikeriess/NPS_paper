@@ -1,0 +1,13 @@
+Distribution,Method,Parameters,R-Square,Val. R-Square
+Normal,Adaptive Lasso,4,0.0047,0.0047
+Normal,Adaptive Elastic Net,4,0.0047,0.0047
+Normal,Lasso,4,0.0046,0.0047
+Normal,Elastic Net,7,0.0048,0.0038
+Exponential,Adaptive Lasso,5,0.0558,0.0532
+Exponential,Adaptive Elastic Net,5,0.0558,0.0532
+Exponential,Lasso,6,0.0571,0.0466
+Exponential,Elastic Net,3,0.0539,0.0460
+Weibull,Adaptive Lasso,6,0.0067,0.0187
+Weibull,Adaptive Elastic Net,6,0.0067,0.0186
+Weibull,Lasso,7,0.0069,0.0175
+Weibull,Elastic Net,7,0.0069,0.0175
