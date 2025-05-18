@@ -328,6 +328,10 @@ def generate_report(experiment_dir, output_pdf=None):
         print("DEBUG: ===== CALLING plot_performance_comparison (contains regression) =====")
         plot_performance_comparison(results, pdf, ordered_schemes=['FCFS', 'LRTF', 'SRTF', 'NPS'])
 
+        # Add Bias Factor Boxplots
+        print("DEBUG: ===== CALLING plot_bias_factor_boxplots =====")
+        plot_bias_factor_boxplots(results, pdf)
+
     print(f"Report generated: {output_pdf}")
     return output_pdf
 
@@ -735,6 +739,129 @@ def plot_prediction_error_histograms(results, pdf):
         plt.tight_layout()
         pdf.savefig()
         plt.close()
+
+def plot_bias_factor_boxplots(results, pdf):
+    """
+    Create boxplots for simulated NPS based on bias factors,
+    hue by priority scheme.
+    """
+    bias_factors_config = {
+        'F_tNPS_wtime_effect_bias': 'Simulated NPS by Throughput Time Effect Bias',
+        'F_NPS_dist_bias': 'Simulated NPS by Distribution Bias'
+    }
+    y_metric = 'closed_avg_simulated_NPS'
+    hue_column = 'F_priority_scheme'
+
+    # Check if essential columns exist
+    if y_metric not in results.columns:
+        print(f"Warning: Column '{y_metric}' not found in results. Skipping bias factor boxplots.")
+        # Optionally, add a placeholder page to the PDF
+        fig = plt.figure(figsize=(10, 6))
+        plt.text(0.5, 0.5, f"Data for '{y_metric}' not available for bias factor plots.", ha='center', va='center', fontsize=12, color='red')
+        plt.title("Bias Factor Analysis Not Available", fontsize=14)
+        plt.axis('off')
+        pdf.savefig(fig)
+        plt.close(fig)
+        return
+
+    if hue_column not in results.columns:
+        print(f"Warning: Column '{hue_column}' not found in results. Cannot create hue for bias factor boxplots.")
+        # Consider if plots should still be generated without hue, or skip. For now, skipping if hue is critical.
+        fig = plt.figure(figsize=(10, 6))
+        plt.text(0.5, 0.5, f"Data for '{hue_column}' (hue) not available for bias factor plots.", ha='center', va='center', fontsize=12, color='red')
+        plt.title("Bias Factor Analysis Not Available", fontsize=14)
+        plt.axis('off')
+        pdf.savefig(fig)
+        plt.close(fig)
+        return
+
+    for factor_col, title_base in bias_factors_config.items():
+        if factor_col not in results.columns:
+            print(f"Warning: Factor column '{factor_col}' not found in results. Skipping boxplot for this factor.")
+            fig = plt.figure(figsize=(10, 6))
+            plt.text(0.5, 0.5, f"Data for factor '{factor_col}' not available.", ha='center', va='center', fontsize=12, color='orange')
+            plt.title(f"{title_base} - Data Missing", fontsize=14)
+            plt.axis('off')
+            pdf.savefig(fig)
+            plt.close(fig)
+            continue
+
+        plot_data = results.copy()
+
+        # Check if y_metric has any valid data for this plot_data
+        if plot_data[y_metric].isnull().all():
+            print(f"Warning: Column '{y_metric}' is all NaN for the current dataset when considering factor '{factor_col}'. Skipping boxplot.")
+            fig_err = plt.figure(figsize=(13, 7))
+            plt.text(0.5, 0.5, f"All data for '{y_metric}' is NaN.\\nCannot generate boxplot for factor '{factor_col}'.",
+                     ha='center', va='center', fontsize=12, color='red', wrap=True)
+            plt.title(f"{title_base} - '{y_metric}' Data Missing", fontsize=14)
+            plt.axis('off')
+            pdf.savefig(fig_err)
+            plt.close(fig_err)
+            continue
+
+        # Convert factor_col to string then category for robust discrete treatment
+        plot_data[factor_col] = plot_data[factor_col].astype(str).astype('category')
+        
+        # Sort categories: numerically if possible, otherwise lexicographically
+        try:
+            current_categories = plot_data[factor_col].cat.categories
+            sorted_categories = sorted(current_categories, key=float) # Try numeric sort
+            plot_data[factor_col] = plot_data[factor_col].cat.set_categories(sorted_categories, ordered=True)
+        except ValueError: # If not sortable as float (e.g. "A", "B", or mixed)
+            plot_data[factor_col] = plot_data[factor_col].cat.reorder_categories(sorted(plot_data[factor_col].cat.categories), ordered=True)
+
+        # Define hue_order explicitly, converting hue levels to string
+        plot_data[hue_column] = plot_data[hue_column].astype(str)
+        hue_order = sorted(plot_data[hue_column].dropna().unique().tolist())
+        
+        if not hue_order:
+            print(f"Warning: No valid hue levels found for '{hue_column}' for factor '{factor_col}'. Skipping boxplot.")
+            fig_err = plt.figure(figsize=(13, 7))
+            plt.text(0.5, 0.5, f"No hue levels for '{hue_column}'\\nwhen plotting factor '{factor_col}'.",
+                     ha='center', va='center', fontsize=12, color='red', wrap=True)
+            plt.title(f"{title_base} - Hue Data Missing", fontsize=14)
+            plt.axis('off')
+            pdf.savefig(fig_err)
+            plt.close(fig_err)
+            continue
+            
+        plt.figure(figsize=(13, 7)) # Increased figure size for clarity
+        
+        try:
+            sns.boxplot(
+                data=plot_data,
+                x=factor_col,
+                y=y_metric,
+                hue=hue_column,
+                hue_order=hue_order, # Explicitly pass hue_order
+                palette='viridis',
+            )
+
+            plt.title(f'{title_base}\\n(Hue: {hue_column})', fontsize=15, pad=20)
+            plt.xlabel(factor_col, fontsize=13)
+            plt.ylabel('Average Simulated NPS (per run)', fontsize=13)
+            
+            current_xticks_labels = plt.gca().get_xticklabels()
+            if len(current_xticks_labels) > 5 : 
+                 plt.xticks(rotation=45, ha="right")
+
+            plt.legend(title=hue_column, bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0.)
+            plt.tight_layout(rect=[0, 0, 0.88, 0.96])
+            
+            # Save the current figure to the PDF - use the figure object directly
+            fig = plt.gcf() 
+            pdf.savefig(fig)
+        except UnboundLocalError as e:
+            print(f"ERROR generating boxplot for {factor_col} with hue {hue_column}: {e}")
+            print("This might be due to insufficient data for any hue category at the given x-levels for Seaborn to draw boxes.")
+            plt.text(0.5, 0.5, f"Could not generate boxplot for:\\nFactor: {factor_col}\\Hue: {hue_column}\\nError: {e}",
+                     ha='center', va='center', fontsize=10, color='red', wrap=True)
+            plt.title(f"Boxplot Generation Error for {factor_col}", fontsize=12)
+            fig = plt.gcf()
+            pdf.savefig(fig) # Save the error message plot
+        finally:
+            plt.close() # Close the current figure to free memory, regardless of success or caught error
 
 def main():
     """Main function to parse arguments and generate the report."""
