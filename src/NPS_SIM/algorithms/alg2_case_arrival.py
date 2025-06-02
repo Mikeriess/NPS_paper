@@ -123,10 +123,12 @@ def CaseArrival(i, D, P_scheme, startdate, seed):
         from models.throughput import predict_TT_Notopic, predict_TT
         
         # Predict throughput time
-        sigma = predict_TT_Notopic(sigma)
+        #sigma = predict_TT_Notopic(sigma)
+        sigma = predict_TT(sigma)
         
         # Predict NPS
-        sigma = predict_NPS_Notopic(sigma)
+        #sigma = predict_NPS_Notopic(sigma)
+        sigma = predict_NPS(sigma)
         
         # update time and counter variables
         if sigma["q"] <= D+1:

@@ -86,7 +86,7 @@ def load_and_prepare_log(csv_path):
     
     # Create a minimal set of columns to copy for START/END nodes to avoid issues with non-numeric data
     # if other columns from the original log were causing issues during pd.concat
-    cols_to_copy_for_synthetic_events = ['case:concept:name'] 
+    cols_to_copy_for_synthetic_events = ['case:concept:name', 'resource'] # Added 'resource'
     # Add any other columns that might be needed and are safe to copy (e.g., numeric, string but not complex objects)
 
     for case_id, group in event_df.groupby('case:concept:name'):
@@ -96,17 +96,21 @@ def load_and_prepare_log(csv_path):
         first_event_original = group.iloc[0]
         last_event_original = group.iloc[-1]
 
-        start_event_data = {col: first_event_original[col] for col in cols_to_copy_for_synthetic_events}
+        start_event_data = {col: first_event_original.get(col) for col in cols_to_copy_for_synthetic_events}
         start_event_data['concept:name'] = 'START_NODE'
         start_event_data['time:timestamp'] = first_event_original['time:timestamp'] - pd.Timedelta(seconds=1)
+        # Ensure resource for START_NODE is from the first *actual* event or None
+        start_event_data['resource'] = first_event_original.get('resource') 
         augmented_events_list.append(start_event_data)
 
         # Add all original events for the case
         augmented_events_list.extend(group.to_dict('records'))
 
-        end_event_data = {col: last_event_original[col] for col in cols_to_copy_for_synthetic_events}
+        end_event_data = {col: last_event_original.get(col) for col in cols_to_copy_for_synthetic_events}
         end_event_data['concept:name'] = 'END_NODE'
         end_event_data['time:timestamp'] = last_event_original['time:timestamp'] + pd.Timedelta(seconds=1)
+        # Ensure resource for END_NODE is from the last *actual* event or None
+        end_event_data['resource'] = last_event_original.get('resource')
         augmented_events_list.append(end_event_data)
 
     if augmented_events_list:
@@ -358,16 +362,31 @@ def create_animation(log_df, dfg, layout, output_path, max_days_to_animate=None)
     print(f"Covering time from {min_log_time_precise.strftime('%Y-%m-%d %H:%M:%S')} to {effective_max_time.strftime('%Y-%m-%d %H:%M:%S')}.")
     # --- End Animation Framing Logic ---
 
-    # Determine axis limits from layout
-    if activity_to_pos:
-        all_x = [pos[0] for pos in activity_to_pos.values()]
-        all_y = [pos[1] for pos in activity_to_pos.values()]
-        if all_x and all_y:
-            ax.set_xlim(min(all_x) - 50, max(all_x) + 50)
-            ax.set_ylim(min(all_y) - 50, max(all_y) + 50)
+    # --- Resource Color Mapping ---
+    default_token_color = 'lightgrey' # Color for tokens with no specific resource or if mapping fails
+    resource_to_color = {}
+    if 'resource' in log_df.columns:
+        all_resources = sorted(log_df['resource'].dropna().unique())
+        num_resources = len(all_resources)
+        if num_resources > 0:
+            try:
+                if num_resources <= 10: # Pastel1 has 9, Pastel2 has 8, Set3 has 12
+                    cmap = plt.cm.get_cmap('Pastel1', num_resources) 
+                elif num_resources <= 20:
+                    cmap = plt.cm.get_cmap('tab20', num_resources) # tab20 has 20 distinct colors
+                else: # Fallback for very many resources
+                    cmap = plt.cm.get_cmap('viridis', num_resources) 
+                resource_to_color = {res: cmap(i) for i, res in enumerate(all_resources)}
+                print(f"Info: Mapped {num_resources} unique resources to colors.")
+            except Exception as e_cmap:
+                print(f"Warning: Could not create ideal colormap for resources: {e_cmap}. Using fallback list.")
+                basic_colors = ['#AEC7E8', '#FFBB78', '#98DF8A', '#FF9896', '#C5B0D5', '#C49C94', '#F7B6D2', '#DBDB8D', '#9EDAE5', '#DAA520']
+                resource_to_color = {res: basic_colors[i % len(basic_colors)] for i, res in enumerate(all_resources)}
         else:
-            ax.set_xlim(0, len(activity_to_pos)*100 if activity_to_pos else 500) # Fallback limits
-            ax.set_ylim(-50, 250 if activity_to_pos else 200) # Fallback limits
+            print("Info: No unique resources found to map to colors.")
+    else:
+        print("Warning: 'resource' column not found in log_df. Tokens will use default color.")
+    # --- End Resource Color Mapping ---
 
     token_artists = {} # Stores {case_id: matplotlib_artist_for_token}
 
@@ -429,7 +448,7 @@ def create_animation(log_df, dfg, layout, output_path, max_days_to_animate=None)
         ax.set_title(f"Process Animation - Interval {frame_num + 1}/{num_animation_intervals} - Time: {current_interval_start_time.strftime('%Y-%m-%d %H:%M:%S')}", fontsize=10)
         # --- End Update for 3-Hour Interval Frames ---
 
-        active_tokens_info_this_frame = [] 
+        active_tokens_info_this_frame = [] # Stores (case_id, pos_tuple, is_on_node, activity_name_if_on_node, resource_id)
         
         for case_id, group in log_df.groupby('case:concept:name'):
             group = group.sort_values('time:timestamp').reset_index(drop=True)
@@ -447,6 +466,7 @@ def create_animation(log_df, dfg, layout, output_path, max_days_to_animate=None)
             if event_i is None: # Case hasn't started by current_interval_start_time
                 continue
 
+            current_resource_id = event_i.get('resource') # Get resource for current event
             event_i_activity_name = event_i['concept:name']
             pos_at_event_i = activity_to_pos.get(event_i_activity_name)
             if not pos_at_event_i: continue
@@ -458,7 +478,7 @@ def create_animation(log_df, dfg, layout, output_path, max_days_to_animate=None)
                 pos_at_event_i_plus_1 = activity_to_pos.get(event_i_plus_1_activity_name)
 
                 if not pos_at_event_i_plus_1: # Should not happen if layout is complete
-                     active_tokens_info_this_frame.append((case_id, pos_at_event_i, True, event_i_activity_name))
+                     active_tokens_info_this_frame.append((case_id, pos_at_event_i, True, event_i_activity_name, current_resource_id))
                      continue
 
                 # If current_interval_start_time is AT or AFTER the next event, token should be AT next event (or further)
@@ -491,41 +511,57 @@ def create_animation(log_df, dfg, layout, output_path, max_days_to_animate=None)
                         # The logic should place it on the node if progress_fraction is ~0 or ~1 and current time matches event time.
                         # For simplicity now: if time_into_segment is 0, it's at node. Otherwise, transitioning.
                         if time_into_segment_seconds == 0 and event_i['time:timestamp'] == current_interval_start_time:
-                             active_tokens_info_this_frame.append((case_id, pos_at_event_i, True, event_i_activity_name))
+                             active_tokens_info_this_frame.append((case_id, pos_at_event_i, True, event_i_activity_name, current_resource_id))
                         else: # Transitioning
-                             active_tokens_info_this_frame.append((case_id, interpolated_pos, False, None))
+                             active_tokens_info_this_frame.append((case_id, interpolated_pos, False, None, current_resource_id))
                     else: # Fallback if interpolation somehow fails
-                         active_tokens_info_this_frame.append((case_id, pos_at_event_i, True, event_i_activity_name))
+                         active_tokens_info_this_frame.append((case_id, pos_at_event_i, True, event_i_activity_name, current_resource_id))
                 else: # current_interval_start_time is >= event_i_plus_1's time, so it's at event_i_plus_1 (or later)
                     # This case should have been handled by the initial loop finding the correct event_i.
                     # If we reach here, it means event_i is the correct one and it's effectively at the node.
-                    active_tokens_info_this_frame.append((case_id, pos_at_event_i, True, event_i_activity_name))
+                    active_tokens_info_this_frame.append((case_id, pos_at_event_i, True, event_i_activity_name, current_resource_id))
             else: # This is the last event for the case (e.g., END_NODE)
-                active_tokens_info_this_frame.append((case_id, pos_at_event_i, True, event_i_activity_name))
+                active_tokens_info_this_frame.append((case_id, pos_at_event_i, True, event_i_activity_name, current_resource_id))
         
         # --- Drawing tokens based on active_tokens_info_this_frame ---
         current_artists_collection = []
         drawn_node_positions_this_frame = {} # For offsetting tokens on the SAME activity node
 
-        for c_id, token_pos_tuple, is_on_node, activity_name_for_node_offset in active_tokens_info_this_frame:
+        # Define avg_x_delta and avg_y_delta here, before the loop that uses them
+        avg_x_delta = (ax.get_xlim()[1] - ax.get_xlim()[0]) / (len(activity_to_pos) + 1e-6)
+        avg_y_delta = (ax.get_ylim()[1] - ax.get_ylim()[0]) / (max(1, (len(activity_to_pos)//3)) + 1e-6) # rough estimate
+
+        for c_id, token_pos_tuple, is_on_node, activity_name_for_node_offset, res_id in active_tokens_info_this_frame:
             final_x, final_y = token_pos_tuple
-            if is_on_node:
-                # Draw a circle at the node position
-                token = plt.Circle((final_x, final_y), token_radius, color='red', zorder=10, alpha=0.9)
-                ax.add_artist(token)
-                case_text = ax.text(final_x, final_y, str(c_id),
-                                    ha='center', va='center', fontsize=6, color='white', zorder=11,
-                                    bbox=dict(boxstyle="circle,pad=0.1", fc="red", ec="red", alpha=0.9))
-                token_artists[c_id] = [token, case_text]
-                current_artists_collection.extend([token, case_text])
-            else:
-                # Draw a line from the node to the interpolated position
-                ax.plot([final_x, final_x], [final_y, final_y], 'red', lw=0.5, zorder=10)
-                case_text = ax.text(final_x, final_y, str(c_id),
-                                    ha='center', va='center', fontsize=6, color='white', zorder=11,
-                                    bbox=dict(boxstyle="circle,pad=0.1", fc="red", ec="red", alpha=0.9))
-                token_artists[c_id] = [case_text]
-                current_artists_collection.append(case_text)
+
+            if is_on_node and activity_name_for_node_offset:
+                offset_idx = drawn_node_positions_this_frame.get(activity_name_for_node_offset, 0)
+                drawn_node_positions_this_frame[activity_name_for_node_offset] = offset_idx + 1
+                
+                angle_step = 2 * np.pi / 8 
+                offset_radius_factor = 0.3 
+                x_range = ax.get_xlim()[1] - ax.get_xlim()[0]
+                y_range = ax.get_ylim()[1] - ax.get_ylim()[0]
+                node_visual_radius_heuristic = min(x_range, y_range) * 0.015
+                                
+                offset_x = node_visual_radius_heuristic * np.cos(offset_idx * angle_step)
+                offset_y = node_visual_radius_heuristic * np.sin(offset_idx * angle_step)
+                
+                # These lines must be INSIDE this block, as offset_x/y are defined here
+                final_x += offset_x
+                final_y += offset_y
+
+            dynamic_token_radius = min(avg_x_delta, avg_y_delta) * 0.05
+            if dynamic_token_radius <= 0: dynamic_token_radius = 3 
+
+            token_color_for_case = resource_to_color.get(res_id, default_token_color)
+
+            token_art = plt.Circle((final_x, final_y), dynamic_token_radius, color=token_color_for_case, zorder=10, alpha=0.9)
+            ax.add_artist(token_art)
+            # Removed bbox from text for cleaner look, text color is black
+            case_text_art = ax.text(final_x, final_y, str(c_id), ha='center', va='center', fontsize=6, color='black', zorder=11)
+            token_artists[c_id] = [token_art, case_text_art]
+            current_artists_collection.extend([token_art, case_text_art])
 
         return current_artists_collection
 

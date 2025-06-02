@@ -234,11 +234,12 @@ def simulate_NPS(case_topicidx, y, seed, F_NPS_dist_bias=0, F_tNPS_wtime_effect_
     
     """
     
-    NPS = int(np.round(NPS,decimals=0))
-    if NPS < 0:
-        NPS = 0
-    if NPS > 10:
-        NPS = 10
+    
+    #NPS = int(np.round(NPS,decimals=0))
+    #if NPS < 0:
+    #    NPS = 0
+    #if NPS > 10:
+    #    NPS = 10
     
     
     return NPS, NPS_priority
