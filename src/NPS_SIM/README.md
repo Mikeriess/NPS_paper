@@ -49,7 +49,33 @@ NPS_SIM/
 
 ### Algorithms
 
-The simulation process is broken down into several algorithms that work together in a coordinated flow:
+The simulation process is broken down into several algorithms:
+
+1. **alg1_timeline_simulation.py**
+   - Main simulation controller
+   - Orchestrates the entire simulation process
+
+2. **alg2_case_arrival.py**
+   - Handles case arrival processes
+   - Manages case generation and timing
+
+3. **alg3_queue_management.py**
+   - Implements queue management strategies
+   - Handles case prioritization
+
+4. **alg4_case_assignment.py**
+   - Manages case assignment to agents
+   - Implements assignment rules
+
+5. **alg5_case_activities.py**
+   - Simulates case activities and processing
+   - Tracks case progress
+
+6. **alg6_finalize.py**
+   - Handles simulation completion
+   - Finalizes results and cleanup
+
+These algorithms work together in a coordinated flow:
 
 ```mermaid
 flowchart TD
@@ -80,6 +106,14 @@ flowchart TD
 
 #### Algorithm Flow Description
 
+**How to Read This Diagram:**
+- **Vertical lines** represent the different algorithm components
+- **Arrows** show function calls and data flow between components (left to right)
+- **Time flows from top to bottom** - earlier events are higher up
+- **Loops** show repeated operations (daily loop contains 15-minute interval loop)
+- **Notes** provide additional context about what happens at each stage
+- **Alt boxes** indicate conditional operations (only when cases need processing)
+
 ```mermaid
 sequenceDiagram
     participant Main as alg1_timeline_simulation
@@ -87,45 +121,34 @@ sequenceDiagram
     participant Queue as alg3_queue_management
     participant Assignment as alg4_case_assignment
     participant Activities as alg5_case_activities
-    participant Finalize as alg6_finalize
     
-    Main->>Arrival: Initialize case generation
-    loop Simulation Time Steps
-        Arrival->>Queue: New cases arrive
-        Queue->>Assignment: Prioritize and select cases
-        Assignment->>Activities: Assign cases to available agents
-        Activities->>Queue: Complete cases, update status
-        Note over Activities: Process case activities<br/>Track progress<br/>Calculate throughput times
+    Note over Main: Simulation Initialization
+    Main->>Arrival: Generate all cases for simulation period
+    Arrival->>Main: Return complete case list (Theta)
+    
+    Note over Main: Daily Loop (F_days iterations)
+    loop Each Day
+        Note over Main: 15-minute intervals (96 per day)
+        loop 15-min intervals
+            Note over Main: Check for queued cases
+            alt Cases in queue or being processed
+                Main->>Queue: Apply priority scheme & sort cases
+                Queue->>Main: Return updated Case_DB with queue_order
+                Main->>Assignment: Assign available agents to cases
+                Assignment->>Main: Return updated Case_DB, Theta, Psi
+                Main->>Activities: Process case activities
+                Activities->>Main: Return updated L, Case_DB, Theta, Psi
+                Note over Activities: - Execute case activities<br/>- Update case status<br/>- Close completed cases<br/>- Free up agents
+            end
+        end
     end
-    Main->>Finalize: Simulation complete
-    Finalize->>Main: Return results and cleanup
+    
+    Note over Main: Simulation Completion
+    Main->>Main: Generate event log from L
+    Main->>Main: Calculate final metrics
 ```
 
-The simulation process is broken down into several algorithms:
 
-1. **alg1_timeline_simulation.py**
-   - Main simulation controller
-   - Orchestrates the entire simulation process
-
-2. **alg2_case_arrival.py**
-   - Handles case arrival processes
-   - Manages case generation and timing
-
-3. **alg3_queue_management.py**
-   - Implements queue management strategies
-   - Handles case prioritization
-
-4. **alg4_case_assignment.py**
-   - Manages case assignment to agents
-   - Implements assignment rules
-
-5. **alg5_case_activities.py**
-   - Simulates case activities and processing
-   - Tracks case progress
-
-6. **alg6_finalize.py**
-   - Handles simulation completion
-   - Finalizes results and cleanup
 
 ### Models
 
