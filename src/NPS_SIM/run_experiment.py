@@ -103,7 +103,7 @@ def create_results_directory(results_dir: Path, run: int) -> Path:
         raise
 
 
-def save_results(run: int, evlog: pd.DataFrame, Case_DB: pd.DataFrame, run_dir: Path) -> None:
+def save_results(run: int, evlog: pd.DataFrame, Case_DB: pd.DataFrame, run_dir: Path, burn_in: int) -> None:
     """
     Save simulation results to CSV files.
     
@@ -112,6 +112,7 @@ def save_results(run: int, evlog: pd.DataFrame, Case_DB: pd.DataFrame, run_dir: 
         evlog (pd.DataFrame): Event log DataFrame to save
         Case_DB (pd.DataFrame): Case database DataFrame to save
         run_dir (Path): Directory where results should be saved
+        burn_in (int): Burn-in period for the simulation
         
     Raises:
         Exception: If saving results fails
@@ -120,6 +121,13 @@ def save_results(run: int, evlog: pd.DataFrame, Case_DB: pd.DataFrame, run_dir: 
         # Save event log and case database to separate CSV files
         evlog.to_csv(run_dir / f"{run}_log.csv", index=False)
         Case_DB.to_csv(run_dir / f"{run}_case_DB.csv", index=False)
+        
+        # Save burn-in data to separate CSV files
+        if burn_in > 0:
+            burnin_evlog = evlog[evlog.burn_in_period == True].copy()
+            burnin_case_db = Case_DB[Case_DB.arrival_q < burn_in].copy()
+            burnin_evlog.to_csv(run_dir / f"{run}_burnin_log.csv", index=False)
+            burnin_case_db.to_csv(run_dir / f"{run}_burnin_case_DB.csv", index=False)
     except Exception as e:
         logger.error(f"Error saving results for run {run}: {str(e)}")
         raise
@@ -196,6 +204,7 @@ def process_single_run(args: Tuple[int, pd.Series, Path]) -> Tuple[int, Dict[str
             "F_ceiling_value": float(settings["F_ceiling_value"]),
             "F_days": int(settings["F_days"]),
             "F_burn_in": int(settings["F_burn_in"]),
+            "F_fit_on_burn_in": str(settings.get("F_fit_on_burn_in", "Static")),  # Default to "Static" if not present
             "F_NPS_dist_bias": float(settings["F_NPS_dist_bias"]),
             "F_tNPS_wtime_effect_bias": float(settings["F_tNPS_wtime_effect_bias"]),
             "seed": seed_value,  # Explicitly pass the seed
@@ -206,16 +215,35 @@ def process_single_run(args: Tuple[int, pd.Series, Path]) -> Tuple[int, Dict[str
         
         # Execute simulation with all parameters explicitly named
         logger.info(f"Starting simulation for run {run} with seed {seed_value}")
-        evlog, Case_DB = Run_simulation(**sim_params)
+        evlog, Case_DB, model_metrics = Run_simulation(**sim_params)
         
-        # Save simulation results
-        save_results(run, evlog, Case_DB, run_dir)
+        # Save simulation results (including burn-in data separation)
+        save_results(run, evlog, Case_DB, run_dir, int(settings["F_burn_in"]))
         
         # Record end time and calculate duration
         end_time = datetime.datetime.now()
         duration = (end_time - start_time).total_seconds()
         
-        # Calculate aggregate metrics from results
+        # Separate main data (exclude burn-in) from burn-in data
+        if 'burn_in_period' in evlog.columns:
+            main_evlog = evlog[evlog.burn_in_period == False].copy()
+            burnin_evlog = evlog[evlog.burn_in_period == True].copy()
+        else:
+            # Fallback if burn_in_period column doesn't exist
+            logger.warning(f"No burn_in_period column found in evlog for run {run}. Using all data as main results.")
+            main_evlog = evlog.copy()
+            burnin_evlog = pd.DataFrame()  # Empty DataFrame
+        
+        # Separate Case_DB based on arrival time (burn-in threshold)
+        F_burn_in = int(settings["F_burn_in"])
+        if F_burn_in > 0 and 'arrival_q' in Case_DB.columns:
+            main_case_db = Case_DB[Case_DB.arrival_q >= F_burn_in].copy()
+            burnin_case_db = Case_DB[Case_DB.arrival_q < F_burn_in].copy()
+        else:
+            main_case_db = Case_DB.copy()
+            burnin_case_db = pd.DataFrame()  # Empty DataFrame
+        
+        # Calculate aggregate metrics from main results (excluding burn-in)
         results = {
             "Started_at": start_time.strftime('%Y-%m-%d %H:%M:%S'),
             "Finished_at": end_time.strftime('%Y-%m-%d %H:%M:%S'),
@@ -223,40 +251,102 @@ def process_single_run(args: Tuple[int, pd.Series, Path]) -> Tuple[int, Dict[str
             "Done": 1
         }
         
-        # Add aggregated metrics for closed cases
-        closed_cases = evlog[evlog.case_status == "closed"]
-        if not closed_cases.empty:
-            results["closed_avg_simulated_NPS"] = closed_cases.simulated_NPS.mean()
-            results["closed_avg_simulated_throughput_time"] = closed_cases.simulated_throughput_time.mean()
-            results["closed_avg_predicted_NPS"] = closed_cases.est_NPS.mean()
-            results["closed_avg_predicted_throughput_time"] = closed_cases.est_throughput_time.mean()
-            results["closed_avg_predicted_NPS_priority"] = closed_cases.est_NPS_priority.mean()
-            results["closed_avg_initial_delay"] = closed_cases.initial_delay.mean()
-            results["closed_avg_activity_start_delay"] = closed_cases.activity_start_delay.mean()
-            results["closed_avg_duration_delayed"] = closed_cases.duration_delayed.mean()
+        # Add aggregated metrics for closed cases (MAIN RESULTS - excluding burn-in)
+        main_closed_cases = main_evlog[main_evlog.case_status == "closed"] if not main_evlog.empty else pd.DataFrame()
+        if not main_closed_cases.empty:
+            results["closed_avg_simulated_NPS"] = main_closed_cases.simulated_NPS.mean()
+            results["closed_avg_simulated_throughput_time"] = main_closed_cases.simulated_throughput_time.mean()
+            results["closed_avg_predicted_NPS"] = main_closed_cases.est_NPS.mean()
+            results["closed_avg_predicted_throughput_time"] = main_closed_cases.est_throughput_time.mean()
+            results["closed_avg_predicted_NPS_priority"] = main_closed_cases.est_NPS_priority.mean()
+            results["closed_avg_initial_delay"] = main_closed_cases.initial_delay.mean()
+            results["closed_avg_activity_start_delay"] = main_closed_cases.activity_start_delay.mean()
+            results["closed_avg_duration_delayed"] = main_closed_cases.duration_delayed.mean()
+        else:
+            # Set to NaN if no closed cases in main results
+            results["closed_avg_simulated_NPS"] = float('nan')
+            results["closed_avg_simulated_throughput_time"] = float('nan')
+            results["closed_avg_predicted_NPS"] = float('nan')
+            results["closed_avg_predicted_throughput_time"] = float('nan')
+            results["closed_avg_predicted_NPS_priority"] = float('nan')
+            results["closed_avg_initial_delay"] = float('nan')
+            results["closed_avg_activity_start_delay"] = float('nan')
+            results["closed_avg_duration_delayed"] = float('nan')
         
-        # Add metrics for all cases
-        results["all_avg_simulated_NPS"] = evlog.simulated_NPS.mean()
-        results["all_avg_simulated_throughput_time"] = evlog.simulated_throughput_time.mean()
-        results["all_avg_predicted_NPS"] = evlog.est_NPS.mean()
-        results["all_avg_predicted_throughput_time"] = evlog.est_throughput_time.mean()
-        results["all_avg_predicted_NPS_priority"] = evlog.est_NPS_priority.mean()
-        results["all_avg_initial_delay"] = evlog.initial_delay.mean()
-        results["all_avg_activity_start_delay"] = evlog.activity_start_delay.mean()
-        results["all_avg_duration_delayed"] = evlog.duration_delayed.mean()
+        # Add metrics for all cases (MAIN RESULTS - excluding burn-in)
+        if not main_evlog.empty:
+            results["all_avg_simulated_NPS"] = main_evlog.simulated_NPS.mean()
+            results["all_avg_simulated_throughput_time"] = main_evlog.simulated_throughput_time.mean()
+            results["all_avg_predicted_NPS"] = main_evlog.est_NPS.mean()
+            results["all_avg_predicted_throughput_time"] = main_evlog.est_throughput_time.mean()
+            results["all_avg_predicted_NPS_priority"] = main_evlog.est_NPS_priority.mean()
+            results["all_avg_initial_delay"] = main_evlog.initial_delay.mean()
+            results["all_avg_activity_start_delay"] = main_evlog.activity_start_delay.mean()
+            results["all_avg_duration_delayed"] = main_evlog.duration_delayed.mean()
+        else:
+            # Set to NaN if no main evlog data
+            results["all_avg_simulated_NPS"] = float('nan')
+            results["all_avg_simulated_throughput_time"] = float('nan')
+            results["all_avg_predicted_NPS"] = float('nan')
+            results["all_avg_predicted_throughput_time"] = float('nan')
+            results["all_avg_predicted_NPS_priority"] = float('nan')
+            results["all_avg_initial_delay"] = float('nan')
+            results["all_avg_activity_start_delay"] = float('nan')
+            results["all_avg_duration_delayed"] = float('nan')
         
-        # Add case count metrics
-        results["cases_arrived"] = len(Case_DB)
-        results["cases_closed"] = len(Case_DB[Case_DB.status == "closed"])
-        results["case_queued"] = len(Case_DB[Case_DB.case_queued == True])
-        results["cases_assigned_at_end"] = len(Case_DB[Case_DB.case_currently_assigned == True])
+        # Add case count metrics (MAIN RESULTS - excluding burn-in)
+        results["cases_arrived"] = len(main_case_db)
+        results["cases_closed"] = len(main_case_db[main_case_db.status == "closed"]) if not main_case_db.empty else 0
+        results["case_queued"] = len(main_case_db[main_case_db.case_queued == True]) if not main_case_db.empty else 0
+        results["cases_assigned_at_end"] = len(main_case_db[main_case_db.case_currently_assigned == True]) if not main_case_db.empty else 0
         
-        # Add trace length metrics
-        case_event_counts = evlog.groupby('case_id').size()
-        results["min_tracelen"] = case_event_counts.min() if not case_event_counts.empty else 0
-        results["max_tracelen"] = case_event_counts.max() if not case_event_counts.empty else 0
+        # Add trace length metrics (MAIN RESULTS - excluding burn-in)
+        if not main_evlog.empty:
+            case_event_counts = main_evlog.groupby('case_id').size()
+            results["min_tracelen"] = case_event_counts.min() if not case_event_counts.empty else 0
+            results["max_tracelen"] = case_event_counts.max() if not case_event_counts.empty else 0
+        else:
+            results["min_tracelen"] = 0
+            results["max_tracelen"] = 0
+        
+        # Calculate and store burn-in specific metrics (if burn-in data exists)
+        if not burnin_evlog.empty:
+            burnin_closed_cases = burnin_evlog[burnin_evlog.case_status == "closed"]
+            if not burnin_closed_cases.empty:
+                results["burnin_closed_avg_simulated_NPS"] = burnin_closed_cases.simulated_NPS.mean()
+                results["burnin_closed_avg_simulated_throughput_time"] = burnin_closed_cases.simulated_throughput_time.mean()
+                results["burnin_closed_avg_predicted_NPS"] = burnin_closed_cases.est_NPS.mean()
+                results["burnin_closed_avg_predicted_throughput_time"] = burnin_closed_cases.est_throughput_time.mean()
+            else:
+                results["burnin_closed_avg_simulated_NPS"] = float('nan')
+                results["burnin_closed_avg_simulated_throughput_time"] = float('nan')
+                results["burnin_closed_avg_predicted_NPS"] = float('nan')
+                results["burnin_closed_avg_predicted_throughput_time"] = float('nan')
+                
+            results["burnin_cases_arrived"] = len(burnin_case_db) if not burnin_case_db.empty else 0
+            results["burnin_cases_closed"] = len(burnin_case_db[burnin_case_db.status == "closed"]) if not burnin_case_db.empty else 0
+        else:
+            # No burn-in data
+            results["burnin_closed_avg_simulated_NPS"] = float('nan')
+            results["burnin_closed_avg_simulated_throughput_time"] = float('nan')
+            results["burnin_closed_avg_predicted_NPS"] = float('nan')
+            results["burnin_closed_avg_predicted_throughput_time"] = float('nan')
+            results["burnin_cases_arrived"] = 0
+            results["burnin_cases_closed"] = 0
+        
+        # Add dynamic model performance metrics
+        results["dynamic_model_mae_burnin"] = model_metrics.get("mae_burnin", float('nan'))
+        results["dynamic_model_mse_burnin"] = model_metrics.get("mse_burnin", float('nan'))
+        results["dynamic_model_n_burnin_samples"] = model_metrics.get("n_burnin_training_samples", 0)
+        results["dynamic_model_mae_main"] = model_metrics.get("mae_main", float('nan'))
+        results["dynamic_model_mse_main"] = model_metrics.get("mse_main", float('nan'))
+        results["dynamic_model_n_main_cases"] = model_metrics.get("n_main_cases", 0)
         
         logger.info(f"Completed run {run} in {duration/60:.2f} minutes")
+        logger.info(f"Main results: {results['cases_arrived']} cases arrived, {results['cases_closed']} closed")
+        if results["burnin_cases_arrived"] > 0:
+            logger.info(f"Burn-in results: {results['burnin_cases_arrived']} cases arrived, {results['burnin_cases_closed']} closed")
+        
         return run, results
         
     except Exception as e:

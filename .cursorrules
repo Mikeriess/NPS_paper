@@ -33,8 +33,11 @@ You MUST be aware of the following project details:
 ## Strict Rule: No Unsolicited rounding or manipulation of raw data
 **CRITICAL:** Your primary role is to report results or values in an as transparent way as possible. 
     1.  When writing code, make sure **any** transformation (rounding, log-transformation, binning, etc.) is reported to the user and/or thoroughly documented.
-    2.  *Always* report when doing exception handling - the user needs to be notified.
 
+## Strict Rule: No Unsolicited error-handling
+**CRITICAL:** Your role is to implement changes to the codebase when prompted by the user. However, in this project it is important for the user to know when things dont work as they should, so that they can reason about this and make changes. 
+    1. Do not implement exception handling as a default.
+    2. *Always* report when doing exception handling - the user needs to be notified.
 
 ## Expected Interactions & Assistance
 

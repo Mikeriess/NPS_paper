@@ -11,6 +11,7 @@ def Run_simulation(agents,
                    F_ceiling_value, 
                    F_days, 
                    F_burn_in, 
+                   F_fit_on_burn_in,
                    seed, 
                    startdate, 
                    F_NPS_dist_bias,
@@ -35,6 +36,8 @@ def Run_simulation(agents,
         Number of days to simulate
     F_burn_in : int
         Number of days for burn-in period
+    F_fit_on_burn_in : str
+        Whether to fit a dynamic model on burn-in data ("Train") or use static model ("Static")
     seed : int
         Random seed for reproducibility
     startdate : datetime
@@ -91,7 +94,7 @@ def Run_simulation(agents,
             length = len(case["a"])
             
             # Mark the burn_in period cases
-            case["burn_in"] = case["q"] < F_burn_in-1
+            case["burn_in"] = case["q"] < F_burn_in
                         
             if length > 0:
                 # Calculate throughput time (incl. queue waiting time)
@@ -199,6 +202,8 @@ def Run_simulation(agents,
     i = 0
     counter = 0
     
+    # Note: CaseArrival generates all cases upfront, so we'll handle dynamic model usage 
+    # during queue management and assignment phases instead
     Theta, i = CaseArrival(i, F_days, P_scheme, startdate, seed=seed)
     
     
@@ -221,6 +226,9 @@ def Run_simulation(agents,
     
     
     """ For each day in the simulation period """
+    # Initialize dynamic model variable to track if training was performed
+    dynamic_model_info = None
+    
     for d in list(range(0,F_days)):
         
         if verbose == True:
@@ -240,6 +248,65 @@ def Run_simulation(agents,
             end_time = time.time()
             Time_sec = end_time - start_time
             print("Duration in minutes:",Time_sec/60)
+            
+        # Train dynamic throughput model at the end of burn-in period
+        if d == F_burn_in and F_fit_on_burn_in == "Train" and F_burn_in > 0:
+            print(f"End of burn-in period (day {d}). Training dynamic throughput model...")
+            try:
+                from models.dynamic_throughput import train_model_on_burn_in
+                
+                # Ensure the run-specific directory exists for saving the model
+                run_dir = Path(results_dir) / str(seed)
+                run_dir.mkdir(parents=True, exist_ok=True)
+                
+                # Mark burn-in status on cases in L before training
+                for case in L:
+                    case["burn_in"] = case["q"] < F_burn_in
+                
+                # Train model on burn-in cases
+                dynamic_model_info = train_model_on_burn_in(L, run_dir)
+                
+                if dynamic_model_info and dynamic_model_info.get("training_successful", False):
+                    print(f"Dynamic model training successful. {dynamic_model_info['n_training_samples']} samples used.")
+                    print(f"Model saved to: {run_dir / 'dynamic_throughput_model.json'}")
+                    
+                    # Update throughput time predictions for cases arriving after burn-in
+                    # using the newly trained dynamic model
+                    try:
+                        from models.dynamic_throughput import predict_TT_dynamic
+                        updated_count = 0
+                        
+                        for theta_idx, case in enumerate(Theta):
+                            # Only update cases that arrive after burn-in period
+                            if case["q"] >= F_burn_in:
+                                # Create temporary sigma for prediction
+                                sigma_temp = {
+                                    "q_dt": case["q_dt"], 
+                                    "c_topic": case["c_topic"]
+                                }
+                                
+                                # Get new prediction using dynamic model
+                                sigma_temp = predict_TT_dynamic(sigma_temp, dynamic_model_info)
+                                
+                                # Update the case and corresponding Case_DB entry
+                                case["est_throughputtime"] = sigma_temp["est_throughputtime"]
+                                Case_DB.loc[theta_idx, "est_throughputtime"] = sigma_temp["est_throughputtime"]
+                                updated_count += 1
+                        
+                        print(f"Updated throughput predictions for {updated_count} post-burn-in cases using dynamic model.")
+                        
+                    except Exception as e:
+                        print(f"Error updating post-burn-in predictions: {e}")
+                        
+                else:
+                    print("Dynamic model training failed. Will continue using static model.")
+                    dynamic_model_info = None
+                    
+            except Exception as e:
+                print(f"Error during dynamic model training: {e}")
+                print("Will continue using static model.")
+                dynamic_model_info = None
+        
         """ 
         daily snapshot of performance: measurement is at 00:00:01 when day begins
         """
@@ -261,9 +328,9 @@ def Run_simulation(agents,
         cases_waiting = cases_waiting.loc[cases_waiting["case_queued"] == False]
         #cases_waiting["waiting_time"] = d - cases_waiting["arrival_q"]
                     
-                
-        cases_waiting_in_queue = Case_DB.loc[Case_DB["case_queued"] == True]        
-        cases_waiting_in_queue.loc[:, "queue_waiting_time"] = d - cases_waiting_in_queue["arrival_q"]
+        # Calculate queue waiting times directly without modifying a DataFrame slice
+        queue_mask = Case_DB["case_queued"] == True
+        queue_waiting_times = d - Case_DB.loc[queue_mask, "arrival_q"] if queue_mask.any() else pd.Series(dtype=float)
                         
         morning_snapshot = {"day":d,
             
@@ -282,10 +349,10 @@ def Run_simulation(agents,
                              "n_busy_agents":n_busy_agents,
                              
                              #cases waiting in the queue
-                             "avg_current_queue_waitingtime":np.mean(cases_waiting_in_queue["queue_waiting_time"]) if len(cases_waiting_in_queue) > 0 else 0,
-                             "min_current_queue_waitingtime":np.min(cases_waiting_in_queue["queue_waiting_time"]) if len(cases_waiting_in_queue) > 0 else 0,
-                             "max_current_queue_waitingtime":np.max(cases_waiting_in_queue["queue_waiting_time"]) if len(cases_waiting_in_queue) > 0 else 0,
-                             "median_current_queue_waitingtime":np.median(cases_waiting_in_queue["queue_waiting_time"]) if len(cases_waiting_in_queue) > 0 else 0,
+                             "avg_current_queue_waitingtime":np.mean(queue_waiting_times) if len(queue_waiting_times) > 0 else 0,
+                             "min_current_queue_waitingtime":np.min(queue_waiting_times) if len(queue_waiting_times) > 0 else 0,
+                             "max_current_queue_waitingtime":np.max(queue_waiting_times) if len(queue_waiting_times) > 0 else 0,
+                             "median_current_queue_waitingtime":np.median(queue_waiting_times) if len(queue_waiting_times) > 0 else 0,
                              
                              #cases being processed
                              # "avg_total_waitingtime":np.mean(cases_waiting["waiting_time"]),
@@ -363,6 +430,22 @@ def Run_simulation(agents,
     
     evlog = store_evlog(L, P_scheme, agents, filedest=filename, F_burn_in=F_burn_in, F_NPS_dist_bias=F_NPS_dist_bias, seed=seed, F_tNPS_wtime_effect_bias=F_tNPS_wtime_effect_bias)
     
+    # Calculate main period performance metrics if dynamic model was used
+    main_period_metrics = {"mae_main": float('nan'), "mse_main": float('nan'), "n_main_cases": 0}
+    
+    if dynamic_model_info and dynamic_model_info.get("training_successful", False):
+        try:
+            from models.dynamic_throughput import calculate_main_period_metrics
+            mae_main, mse_main, n_main = calculate_main_period_metrics(L, dynamic_model_info, F_burn_in)
+            main_period_metrics = {
+                "mae_main": mae_main, 
+                "mse_main": mse_main, 
+                "n_main_cases": n_main
+            }
+            print(f"Main period model performance: MAE={mae_main:.4f}, MSE={mse_main:.4f}, N={n_main}")
+        except Exception as e:
+            print(f"Error calculating main period metrics: {e}")
+    
     # Generate daily timeseries snapshots for this simulation run
     timeseries = pd.DataFrame(timeseries)
     
@@ -385,7 +468,24 @@ def Run_simulation(agents,
     # Save timeseries to the specified results directory
     timeseries.to_csv(run_dir / f"{seed}_timeseries.csv", index=False)
     
-    return evlog, Case_DB
+    # Combine dynamic model training and main period metrics
+    model_metrics = {}
+    if dynamic_model_info and dynamic_model_info.get("training_successful", False):
+        model_metrics.update({
+            "mae_burnin": dynamic_model_info.get("mae_burnin", float('nan')),
+            "mse_burnin": dynamic_model_info.get("mse_burnin", float('nan')),
+            "n_burnin_training_samples": dynamic_model_info.get("n_training_samples", 0)
+        })
+    else:
+        model_metrics.update({
+            "mae_burnin": float('nan'),
+            "mse_burnin": float('nan'), 
+            "n_burnin_training_samples": 0
+        })
+    
+    model_metrics.update(main_period_metrics)
+    
+    return evlog, Case_DB, model_metrics
 
 
 #evlog.est_NPS_priority

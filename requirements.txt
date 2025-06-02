@@ -1,0 +1,23 @@
+# NPS Simulation Framework Dependencies
+
+# Core scientific computing
+numpy>=1.20.0
+pandas>=1.3.0
+
+# Mathematical optimization (for dynamic throughput model)
+scipy>=1.7.0
+
+# Multi-precision arithmetic
+mpmath>=1.2.0
+
+# Standard library (included with Python, listed for reference)
+# datetime
+# pathlib
+# json
+# logging
+# typing
+# argparse
+# os
+# time
+# multiprocessing
+# concurrent.futures 

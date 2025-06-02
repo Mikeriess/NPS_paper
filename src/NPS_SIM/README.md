@@ -157,6 +157,57 @@ sequenceDiagram
 
 2. **throughput.py**
    - Handles throughput time calculations and modeling
+   - Contains static pre-trained model with fixed coefficients
+
+3. **dynamic_throughput.py** *(New)*
+   - **Dynamic Throughput Time Prediction Model**
+   - Trains exponential regression models on burn-in data
+   - Provides both training and inference capabilities
+   - **Improvements over static model:**
+     - Adapts to actual system performance during burn-in
+     - Fixes topic encoding bugs present in static model (e.g., d_2 topic correctly mapped)
+     - Provides comprehensive error handling and fallback mechanisms
+   - Key functions:
+     - `train_model_on_burn_in()`: Trains model on observed burn-in cases
+     - `predict_TT_dynamic()`: Makes predictions using trained model
+     - `save_model()`/`load_model()`: Model persistence in JSON format
+   - **Benefits:**
+     - More accurate predictions adapted to actual system performance
+     - Improved realism of throughput time estimates for main simulation
+     - Enhanced validity of NPS-based prioritization decisions
+
+### Key Simulation Parameters
+
+The simulation accepts several key parameters that control its behavior:
+
+- **`F_fit_on_burn_in`** *(String Parameter)*:
+  - **Description:** Controls whether dynamic model training is performed on burn-in data
+  - **Values:** `"Train"` (enable dynamic training) or `"Static"` (use static model only)
+  - **When "Train":**
+    - Model training occurs at the end of the burn-in period (day `F_burn_in`)
+    - Exponential regression is fitted on observed throughput times from closed burn-in cases
+    - Trained model parameters are saved as `dynamic_throughput_model.json` in the run directory
+    - All cases arriving after burn-in use dynamically trained predictions
+    - Falls back to static model if training fails or insufficient data
+    - **Performance metrics calculated:**
+      - `dynamic_model_mae_burnin`: Mean Absolute Error on burn-in training data
+      - `dynamic_model_mse_burnin`: Mean Squared Error on burn-in training data  
+      - `dynamic_model_mae_main`: Mean Absolute Error on main period predictions vs actual
+      - `dynamic_model_mse_main`: Mean Squared Error on main period predictions vs actual
+      - `dynamic_model_n_burnin_samples`: Number of burn-in cases used for training
+      - `dynamic_model_n_main_cases`: Number of main period cases used for evaluation
+  - **When "Static":** 
+    - Uses static pre-trained model for all throughput time predictions
+    - All dynamic model metrics are set to NaN/0
+    - Maintains backward compatibility with existing experiments
+  - **Significance:** Enables more realistic throughput time predictions and provides metrics to assess prediction quality
+
+- **`F_burn_in`**:
+  - **Description:** Number of days for the burn-in/warm-up period
+  - **Purpose:** Allows system to reach steady state before measurement
+  - **New Functionality:** When `F_fit_on_burn_in="Train"`, also serves as training period for dynamic model
+
+- **Other Parameters:** Number of agents, priority schemes, NPS bias factors, etc.
 
 ### Distributions
 
@@ -183,11 +234,20 @@ sequenceDiagram
 
 ## Dependencies
 
-- Python 3.x
-- pandas
-- numpy
-- mpmath
-- datetime
+All required dependencies are listed in `requirements.txt`. Install with:
+
+```bash
+pip install -r requirements.txt
+```
+
+Key dependencies:
+- **numpy**: Scientific computing and array operations
+- **pandas**: Data manipulation and analysis (if needed)
+- **scipy**: Mathematical optimization for dynamic model training
+- **mpmath**: Multi-precision arithmetic for numerical stability
+
+Standard library modules (included with Python):
+- datetime, pathlib, json, logging, typing, os, time, multiprocessing
 
 ## Usage
 
@@ -206,12 +266,22 @@ sequenceDiagram
 The simulation generates:
 - Event logs (`*_log.csv`)
 - Case databases (`*_case_DB.csv`)
+- **Burn-in data** (when `F_burn_in > 0`):
+  - `*_burnin_log.csv`: Event log for burn-in period cases
+  - `*_burnin_case_DB.csv`: Case database for burn-in period cases
+- **Dynamic model files** (when `F_fit_on_burn_in="Train"`):
+  - `dynamic_throughput_model.json`: Trained model parameters and metadata
+- Timeseries snapshots (`*_timeseries.csv`)
 - Experiment results with timing information
 - Performance metrics including:
   - Simulated NPS scores
   - Throughput times
   - Queue lengths
   - Agent utilization
+  - **Dynamic model performance metrics** (when `F_fit_on_burn_in="Train"`):
+    - MAE and MSE on burn-in training data
+    - MAE and MSE on main period prediction accuracy
+    - Sample sizes for training and evaluation
 
 ## Notes
 
