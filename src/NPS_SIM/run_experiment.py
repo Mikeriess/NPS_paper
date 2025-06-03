@@ -262,6 +262,30 @@ def process_single_run(args: Tuple[int, pd.Series, Path]) -> Tuple[int, Dict[str
             results["closed_avg_initial_delay"] = main_closed_cases.initial_delay.mean()
             results["closed_avg_activity_start_delay"] = main_closed_cases.activity_start_delay.mean()
             results["closed_avg_duration_delayed"] = main_closed_cases.duration_delayed.mean()
+
+            # Calculate Org-Level NPS from simulated_NPS for main_closed_cases
+            if 'simulated_NPS' in main_closed_cases.columns:
+                # Apply winsorizing (rounding and clamping to 0-10 scale)
+                # This logic mirrors the commented-out section in distributions/tNPS.py
+                raw_nps_scores = main_closed_cases['simulated_NPS'].dropna()
+                if not raw_nps_scores.empty:
+                    nps_scores_0_10 = raw_nps_scores.apply(lambda x: max(0, min(10, round(x))))
+
+                    num_promoters = (nps_scores_0_10 >= 9).sum()
+                    num_detractors = (nps_scores_0_10 <= 6).sum()
+                    total_respondents = len(nps_scores_0_10)
+
+                    if total_respondents > 0:
+                        percent_promoters = (num_promoters / total_respondents) * 100
+                        percent_detractors = (num_detractors / total_respondents) * 100
+                        results["org_level_NPS"] = percent_promoters - percent_detractors
+                    else:
+                        results["org_level_NPS"] = float('nan')
+                else:
+                    results["org_level_NPS"] = float('nan') # No valid raw NPS scores after dropna
+            else:
+                results["org_level_NPS"] = float('nan') # simulated_NPS column missing
+
         else:
             # Set to NaN if no closed cases in main results
             results["closed_avg_simulated_NPS"] = float('nan')
@@ -272,6 +296,7 @@ def process_single_run(args: Tuple[int, pd.Series, Path]) -> Tuple[int, Dict[str
             results["closed_avg_initial_delay"] = float('nan')
             results["closed_avg_activity_start_delay"] = float('nan')
             results["closed_avg_duration_delayed"] = float('nan')
+            results["org_level_NPS"] = float('nan') # Also set org_level_NPS to NaN here
         
         # Add metrics for all cases (MAIN RESULTS - excluding burn-in)
         if not main_evlog.empty:

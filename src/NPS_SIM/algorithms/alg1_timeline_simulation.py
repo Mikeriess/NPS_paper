@@ -268,7 +268,7 @@ def Run_simulation(agents,
                 
                 if dynamic_model_info and dynamic_model_info.get("training_successful", False):
                     print(f"Dynamic model training successful. {dynamic_model_info['n_training_samples']} samples used.")
-                    print(f"Model saved to: {run_dir / 'dynamic_throughput_model.json'}")
+                    print(f"Model saved to: {run_dir / 'models' / 'dynamic_throughput_model.json'}")
                     
                     # Update throughput time predictions for cases arriving after burn-in
                     # using the newly trained dynamic model
