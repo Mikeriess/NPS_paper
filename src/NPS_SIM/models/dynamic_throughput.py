@@ -23,8 +23,8 @@ import logging
 # Set up logging
 logger = logging.getLogger(__name__)
 
-# Import LASSO model functions
-from src.NPS_SIM.models.lasso_tt import train_lasso_regression, predict_with_lasso
+# Import LASSO model functions using a relative import
+from .lasso_tt import train_lasso_regression, predict_with_lasso
 
 def extract_features_from_case(case_dict: Dict) -> List[float]:
     """

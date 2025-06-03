@@ -25,6 +25,13 @@ import numpy as np
 import sys
 
 # Local imports
+# Ensure the project root is in sys.path for robust module resolution, especially for parallel processing
+# This script (run_experiment.py) is in src/NPS_SIM/
+# Project root is two levels up.
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 from algorithms.alg1_timeline_simulation import Run_simulation
 
 # Default number of workers for parallel execution
@@ -167,6 +174,12 @@ def process_single_run(args: Tuple[int, pd.Series, Path]) -> Tuple[int, Dict[str
     """
     run, settings, results_dir = args
     
+    # Ensure the project root is in sys.path for worker processes too
+    # This might be redundant if set globally before pool creation, but ensures robustness
+    # This is particularly important because worker processes might not inherit sys.path additions perfectly.
+    if str(PROJECT_ROOT) not in sys.path:
+        sys.path.insert(0, str(PROJECT_ROOT))    
+
     try:
         # Print settings for this run
         print_run_settings(run, settings)
@@ -471,6 +484,11 @@ def run_experiments(results_dir: Path, parallel: bool = True, max_workers: int =
 
 def main():
     """Parse command line arguments and run experiments"""
+    # Ensure the project root is in sys.path for the main process as well, before other imports if they were relative
+    # Best to do it early, though the top-level one should cover most direct script runs.
+    if str(PROJECT_ROOT) not in sys.path:
+        sys.path.insert(0, str(PROJECT_ROOT)) 
+
     parser = argparse.ArgumentParser(description="Run NPS simulation experiments based on a design table.")
     parser.add_argument("--dest", type=str, required=True, 
                         help="Path to directory containing design_table.csv and where results will be stored")
