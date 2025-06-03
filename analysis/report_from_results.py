@@ -400,7 +400,7 @@ def plot_histograms(results, pdf):
     for metric, label in metrics_config.items():
         if metric not in results.columns:
             print(f"Warning: Column {metric} not found in results")
-            continue
+                continue
             
         plt.figure(figsize=(10, 6))
         
@@ -645,10 +645,10 @@ def plot_performance_comparison(results, pdf, ordered_schemes):
             plt.ylim(0,100)
 
         plt.xticks(rotation=45, ha="right") # Ensure x-axis labels are readable
-        plt.tight_layout()
-        pdf.savefig()
-        plt.close()
-
+    plt.tight_layout()
+    pdf.savefig()
+    plt.close()
+    
     # --- Regression Analysis Section ---
     if results.empty:
         print("DEBUG: Skipping regression analysis as the results DataFrame is empty.")
@@ -716,11 +716,11 @@ def plot_prediction_error_histograms(results, pdf):
                      ha='center', va='center', fontsize=12, color='red')
             plt.title(f'Histogram for {label}', fontsize=14)
             plt.axis('off')
-            pdf.savefig()
-            plt.close()
+    pdf.savefig()
+    plt.close()
             continue
-
-        plt.figure(figsize=(10, 6))
+    
+    plt.figure(figsize=(10, 6))
         sns.histplot(
             data=results,
             x=metric_col,
@@ -736,10 +736,10 @@ def plot_prediction_error_histograms(results, pdf):
         current_xlim = plt.gca().get_xlim()
         plt.xlim(0, current_xlim[1]) # Set lower bound to 0, keep upper bound
 
-        plt.tight_layout()
-        pdf.savefig()
-        plt.close()
-
+    plt.tight_layout()
+    pdf.savefig()
+    plt.close()
+    
 def plot_bias_factor_boxplots(results, pdf):
     """
     Create boxplots for simulated NPS based on bias factors,
@@ -874,4 +874,4 @@ def main():
     generate_report(args.experiment, args.output)
 
 if __name__ == "__main__":
-    main()
+    main() 

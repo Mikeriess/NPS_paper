@@ -21,3 +21,8 @@ mpmath>=1.2.0
 # time
 # multiprocessing
 # concurrent.futures 
+
+matplotlib
+seaborn
+statsmodels
+scikit-learn
