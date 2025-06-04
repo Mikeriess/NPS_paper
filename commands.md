@@ -1,16 +1,16 @@
 
 # Generate design
 ```bash
-python src/NPS_SIM/generate_design.py --settings experiments/gridsearch_dynamic_tt/settings.json
+python src/NPS_SIM/generate_design.py --settings experiments/test_lasso_wtimebias/settings.json
 ```
 
 # Run with all cpus
 ```bash
-python src/NPS_SIM/run_experiment.py --dest experiments/gridsearch_dynamic_tt/
+python src/NPS_SIM/run_experiment.py --dest experiments/test_lasso_wtimebias/
 ```
 
 # Analyze/create pdf
 ```bash
-python analysis/report_from_results.py --experiment experiments/gridsearch_dynamic_tt/
+python analysis/report_from_results.py --experiment experiments/test_lasso_wtimebias/
 ```
 

@@ -29,55 +29,73 @@ from .lasso_tt import train_lasso_regression, predict_with_lasso
 def extract_features_from_case(case_dict: Dict) -> List[float]:
     """
     Extract features from a case dictionary for model training/prediction.
+    Year is included as a numerical feature.
+    Month, day (of month), weekday, and hour are one-hot encoded.
+    Case topics are also one-hot encoded.
     
     Args:
         case_dict: Dictionary containing case information with keys like 'q_dt', 'c_topic'
         
     Returns:
-        List of feature values in the same order used by the static model
+        List of feature values.
     """
     date_and_time = case_dict["q_dt"]
     case_topicidx = case_dict["c_topic"]
     
-    # Temporal features
-    year = date_and_time.year
-    month = date_and_time.month
-    day = date_and_time.day
-    weekday = date_and_time.weekday()
-    hour = date_and_time.hour
+    # Temporal features (raw)
+    year_val = float(date_and_time.year)
+    month_val = date_and_time.month # 1-12
+    day_val = date_and_time.day     # 1-31
+    weekday_val = date_and_time.weekday() # 0-6 (Monday=0, Sunday=6)
+    hour_val = date_and_time.hour   # 0-23
     
-    # Case topic one-hot encoding (same order as static model)
-    case_topics = ["j_1", "z_3", "q_3", "z_2", "r_2", "z_4", "d_2", "w_2", "g_1", "w_1"]
-    casetopic = case_topics[case_topicidx]
+    # One-hot encode month (12 features: month_1 to month_12)
+    month_features = [0.0] * 12
+    if 1 <= month_val <= 12:
+        month_features[month_val - 1] = 1.0
+        
+    # One-hot encode day of month (31 features: day_1 to day_31)
+    day_features = [0.0] * 31
+    if 1 <= day_val <= 31:
+        day_features[day_val - 1] = 1.0
+        
+    # One-hot encode weekday (7 features: weekday_0 to weekday_6)
+    weekday_features = [0.0] * 7
+    if 0 <= weekday_val <= 6:
+        weekday_features[weekday_val] = 1.0
+        
+    # One-hot encode hour (24 features: hour_0 to hour_23)
+    hour_features = [0.0] * 24
+    if 0 <= hour_val <= 23:
+        hour_features[hour_val] = 1.0
+
+    # Case topic one-hot encoding (10 features)
+    # Order: d_2, g_1, j_1, q_3, r_2, w_1, w_2, z_2, z_3, z_4
+    case_topics_ordered_for_betas = ["d_2", "g_1", "j_1", "q_3", "r_2", "w_1", "w_2", "z_2", "z_3", "z_4"]
+    # Original mapping from general case_topics list to the above specific order:
+    # The static model definition in throughput.py uses: ["j_1", "z_3", "q_3", "z_2", "r_2", "z_4", "d_2", "w_2", "g_1", "w_1"]
+    # We need to map case_topicidx to the correct position in `topic_dummies` that matches `case_topics_ordered_for_betas`
     
-    # Initialize topic dummy variables
-    topic_dummies = [0] * 10  # d_2, g_1, j_1, q_3, r_2, w_1, w_2, z_2, z_3, z_4
-    
-    # Map case topic to dummy variables correctly (fixing the static model bug)
-    # The static model incorrectly treats d_2 topic as j_1, but we implement it correctly here
-    if casetopic == "d_2":
-        topic_dummies[0] = 1  # d_2 = 1 (correct implementation)
-    elif casetopic == "g_1":
-        topic_dummies[1] = 1  # g_1 = 1
-    elif casetopic == "j_1":
-        topic_dummies[2] = 1  # j_1 = 1
-    elif casetopic == "q_3":
-        topic_dummies[3] = 1  # q_3 = 1
-    elif casetopic == "r_2":
-        topic_dummies[4] = 1  # r_2 = 1
-    elif casetopic == "w_1":
-        topic_dummies[5] = 1  # w_1 = 1
-    elif casetopic == "w_2":
-        topic_dummies[6] = 1  # w_2 = 1
-    elif casetopic == "z_2":
-        topic_dummies[7] = 1  # z_2 = 1
-    elif casetopic == "z_3":
-        topic_dummies[8] = 1  # z_3 = 1
-    elif casetopic == "z_4":
-        topic_dummies[9] = 1  # z_4 = 1
-    
-    # Return features in same order as static model: [year, month, day, weekday, hour, d_2, g_1, j_1, q_3, r_2, w_1, w_2, z_2, z_3, z_4]
-    features = [year, month, day, weekday, hour] + topic_dummies
+    # This is the order of topics as they appear in the original full list from which case_topicidx is derived
+    original_case_topics_list = ["j_1", "z_3", "q_3", "z_2", "r_2", "z_4", "d_2", "w_2", "g_1", "w_1"]
+    current_casetopic_str = original_case_topics_list[case_topicidx]
+
+    topic_dummies = [0.0] * 10
+    try:
+        idx_in_ordered_list = case_topics_ordered_for_betas.index(current_casetopic_str)
+        topic_dummies[idx_in_ordered_list] = 1.0
+    except ValueError:
+        # This case should ideally not happen if all topics in original_case_topics_list are in case_topics_ordered_for_betas
+        # If it does, it means there's a mismatch in topic definitions that needs addressing.
+        logger.warning(f"Case topic '{current_casetopic_str}' (index {case_topicidx}) not found in defined ordered list for dummies. Topic features will be all zero.")
+
+    # Combine all features: Year (numerical) + OHE month + OHE day + OHE weekday + OHE hour + OHE topics
+    features = ([year_val] + 
+                month_features + 
+                day_features + 
+                weekday_features + 
+                hour_features + 
+                topic_dummies)
     
     return features
 
@@ -461,12 +479,16 @@ def train_model_on_burn_in(case_list: List[Dict], run_dir: Path) -> Optional[Dic
         return None # Indicate failure: no data
         
     # Feature names must match the order in extract_features_from_case
-    feature_names = ["year", "month", "day", "weekday", "hour", 
-                     "d_2", "g_1", "j_1", "q_3", "r_2", 
-                     "w_1", "w_2", "z_2", "z_3", "z_4"]
-    
+    feature_names = ["year"] + \
+                    [f"month_{i}" for i in range(1, 13)] + \
+                    [f"day_{i}" for i in range(1, 32)] + \
+                    [f"weekday_{i}" for i in range(7)] + \
+                    [f"hour_{i}" for i in range(24)] + \
+                    ["topic_d_2", "topic_g_1", "topic_j_1", "topic_q_3", "topic_r_2", 
+                     "topic_w_1", "topic_w_2", "topic_z_2", "topic_z_3", "topic_z_4"] # Matching the order in case_topics_ordered_for_betas
+
     if X_train.shape[1] != len(feature_names):
-        logger.error(f"Mismatch between number of features in training data ({X_train.shape[1]}) and expected feature_names count ({len(feature_names)}).")
+        logger.error(f"Mismatch between number of features in training data ({X_train.shape[1]}) and expected feature_names count ({len(feature_names)}). Features expected: {feature_names}")
         # This indicates a problem in feature extraction or feature_names list.
         return None 
 
