@@ -1,4 +1,7 @@
-
+# Run docker
+```bash
+docker run -it --rm --gpus all -v "/storageHD/userHome/mikeriess/projects/NPS_paper:/NPS_paper" -w "/NPS_paper" nps_paper-simulation_runner:latest bash
+```
 # Generate design
 ```bash
 python src/NPS_SIM/generate_design.py --settings experiments/test_lasso_wtimebias/settings.json
