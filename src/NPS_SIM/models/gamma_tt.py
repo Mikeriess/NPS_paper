@@ -58,7 +58,6 @@ def train_gamma_regression(
     # GammaRegressor with log link. Alpha is for L2 penalty.
     model = GammaRegressor(
         alpha=alpha,
-        link='log',
         fit_intercept=True,
         max_iter=10000, # Increased max_iter for potentially harder convergence
         random_state=42 # Added random_state for reproducibility
