@@ -4,16 +4,16 @@ docker run -it --rm --gpus all -v "/storageHD/userHome/mikeriess/projects/NPS_pa
 ```
 # Generate design
 ```bash
-python src/NPS_SIM/generate_design.py --settings experiments/test_lasso_wtimebias/settings.json
+python src/NPS_SIM/generate_design.py --settings experiments/gamma_test/settings.json
 ```
 
-# Run with all cpus
+# Run with 40 cpus
 ```bash
-python src/NPS_SIM/run_experiment.py --dest experiments/test_lasso_wtimebias/
+python src/NPS_SIM/run_experiment.py --dest experiments/gamma_test/ --workers 40
 ```
 
 # Analyze/create pdf
 ```bash
-python analysis/report_from_results.py --experiment experiments/test_lasso_wtimebias/
+python analysis/report_from_results.py --experiment experiments/gamma_test/
 ```
 
