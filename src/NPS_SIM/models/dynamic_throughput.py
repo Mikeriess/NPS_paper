@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 
 # Import LASSO model functions using a relative import
 from .lasso_tt import train_lasso_regression, predict_with_lasso
+from .gamma_tt import train_gamma_regression, predict_with_gamma # Added Gamma model
 
 def extract_features_from_case(case_dict: Dict) -> List[float]:
     """
@@ -314,57 +315,43 @@ def load_model(filepath: Path) -> Optional[Dict]:
 
 def predict_TT_dynamic(sigma: Dict, model_info: Optional[Dict] = None) -> Dict:
     """
-    Predict throughput time (TT) using a dynamically trained model.
-    If no dynamic model is provided or if it's invalid, fall back to static prediction.
-    
-    Args:
-        sigma: Dictionary containing case information.
-        model_info: Dictionary containing the trained dynamic model parameters.
-                    Expected to have 'model_type': 'lasso' for LASSO model.
-                    
-    Returns:
-        sigma: The input dictionary updated with 'est_throughputtime' (in days)
-               and 'throughput_model_used' ('dynamic_lasso' or 'static_fallback').
+    Predict throughput time dynamically using a trained model or fallback to static.
+    The prediction is returned in DAYS.
     """
+    if model_info is None or not model_info.get("training_successful", False):
+        # Fallback to static model if no dynamic model info or training failed
+        # logger.debug("Dynamic model not available or training failed, using static fallback for TT prediction.")
+        return predict_TT_static_fallback(sigma)
+
     try:
-        if model_info and model_info.get("training_successful") and model_info.get("model_type") == "lasso":
-            features_list = extract_features_from_case(sigma)
-            features_np = np.array(features_list) # Ensure it's a numpy array
-
-            # Check if features_np needs reshaping for single prediction: (1, n_features)
-            # The predict_with_lasso function expects a 1D array of features for a single case.
-            # If extract_features_from_case returns a list, np.array(features_list) should be 1D.
-
-            predicted_tt_minutes = predict_with_lasso(features_np, model_info)
-            
-            if predicted_tt_minutes is not None and predicted_tt_minutes > 0:
-                predicted_tt_days = predicted_tt_minutes / (24 * 60)
-                sigma["est_throughputtime"] = predicted_tt_days
-                sigma["throughput_model_used"] = "dynamic_lasso"
-                # logger.debug(f"Dynamic LASSO prediction for case {sigma.get('i', 'unknown')}: {predicted_tt_days:.4f} days")
-                return sigma # Return early on successful dynamic prediction
-            else:
-                logger.warning(f"Dynamic LASSO prediction for case {sigma.get('i', 'unknown')} "
-                               f"resulted in {predicted_tt_minutes}. Falling back to static.")
-                return predict_TT_static_fallback(sigma)
+        features = np.array(extract_features_from_case(sigma))
         
-        else: # Fallback conditions
-            if model_info: # A model was loaded but not suitable
-                if not model_info.get("training_successful"):
-                    logger.debug(f"Dynamic model training was not successful. Falling back to static for case {sigma.get('i', 'unknown')}.")
-                elif model_info.get("model_type") != "lasso":
-                    logger.warning(f"Loaded dynamic model is not of type LASSO (type: {model_info.get('model_type')}). "
-                                   f"Falling back to static for case {sigma.get('i', 'unknown')}.")
-                # else: # Other model_info issues
-                    # logger.debug(f"Problem with loaded dynamic model. Falling back to static for case {sigma.get('i', 'unknown')}.")
-            # else: # No model_info provided
-                # logger.debug(f"No dynamic model provided. Falling back to static for case {sigma.get('i', 'unknown')}.")
+        # Determine which prediction function to use based on model_type
+        model_type = model_info.get("model_type")
+        prediction_minutes: Optional[float] = None
+
+        if model_type == "lasso":
+            prediction_minutes = predict_with_lasso(features, model_info)
+        elif model_type == "gamma_glm":
+            prediction_minutes = predict_with_gamma(features, model_info)
+        else:
+            logger.warning(f"Unknown dynamic model type: {model_type}. Falling back to static model.")
+            return predict_TT_static_fallback(sigma)
+
+        if prediction_minutes is not None:
+            # Convert prediction from minutes to days
+            sigma["est_throughputtime"] = prediction_minutes / (24 * 60)
+            sigma["est_throughputtime_source"] = f"dynamic_{model_type}" 
+            # logger.debug(f"Dynamic TT prediction ({model_type}): {sigma['est_throughputtime']:.4f} days for case {sigma.get('i', 'N/A')}")
+        else:
+            # logger.warning(f"Dynamic TT prediction ({model_type}) returned None. Falling back to static for case {sigma.get('i', 'N/A')}.")
             return predict_TT_static_fallback(sigma)
             
-    except Exception as e: # Catch-all for unexpected errors during prediction logic
-        logger.error(f"Error in predict_TT_dynamic dispatch: {e}. "
-                       f"Using static fallback for case {sigma.get('i', 'unknown')}.")
+    except Exception as e:
+        logger.error(f"Error during dynamic TT prediction with {model_type}: {e}. Falling back to static model.")
         return predict_TT_static_fallback(sigma)
+        
+    return sigma
 
 
 def predict_TT_static_fallback(sigma: Dict) -> Dict:
@@ -385,141 +372,116 @@ def predict_TT_static_fallback(sigma: Dict) -> Dict:
 
 def calculate_main_period_metrics(case_list: List[Dict], model_info: Dict, F_burn_in: int) -> Tuple[float, float, int]:
     """
-    Calculate MAE and MSE for the main period cases using the trained dynamic model.
-    
-    Args:
-        case_list: List of all cases from simulation
-        model_info: Trained model information dictionary (expected for dynamic model eval)
-        F_burn_in: Burn-in period threshold (day number)
-        
-    Returns:
-        Tuple of (mae_main, mse_main, n_main_cases) where:
-        - mae_main: Mean Absolute Error on main period cases (in days)
-        - mse_main: Mean Squared Error on main period cases (in days^2)
-        - n_main_cases: Number of main period cases used for evaluation
+    Calculate MAE and MSE for the main simulation period using a trained dynamic model.
+    Predictions and actuals are in MINUTES.
     """
-    # This function assumes that est_throughputtime (in days) is already populated in cases
-    # by predict_TT_dynamic (or static fallback) during the simulation.
+    main_period_predictions = []
+    main_period_actuals = []
     
-    if not model_info or not model_info.get("training_successful", False):
-        logger.warning("No valid trained dynamic model provided for main period metrics calculation. Metrics will reflect fallback if used.")
-        # Depending on requirements, one might still proceed to see performance of whatever model was used (e.g. static)
-        # For now, let's assume we are interested in dynamic model's performance when available.
-        # If strictly only dynamic, could return nan, nan, 0 if model_info is not the dynamic one.
+    model_type = model_info.get("model_type", "unknown")
 
-    predictions_main_days = []
-    actuals_main_days = []
-    n_main_dynamic_used = 0
-    n_main_static_used = 0
-    
     for case in case_list:
-        # Only use closed cases from main period (after burn-in period ENDS)
-        # Assuming F_burn_in is the day number that marks the END of burn-in.
-        # So main period cases are those whose queue time 'q' is >= F_burn_in.
-        if (not case.get("burn_in", True)) and \
-           case.get("status") == "closed" and \
-           case.get("q", float('-inf')) >= F_burn_in: # Ensure q exists and is comparable
-            
+        if not case.get("burn_in", True) and case.get("status") == "closed": # Main period, closed cases
             try:
-                predicted_tt_days = case.get("est_throughputtime") # This is already in days
+                features = np.array(extract_features_from_case(case))
                 
-                if case.get("t_end") and len(case["t_end"]) > 0 and predicted_tt_days is not None:
-                    actual_tt_days = np.max(case["t_end"]) - case["q"] # Already in days
-                    
-                    predictions_main_days.append(predicted_tt_days)
-                    actuals_main_days.append(actual_tt_days)
-
-                    if case.get("throughput_model_used") == "dynamic_lasso":
-                        n_main_dynamic_used +=1
-                    elif case.get("throughput_model_used") == "static_fallback":
-                        n_main_static_used +=1
+                prediction_minutes: Optional[float] = None
+                if model_type == "lasso":
+                    prediction_minutes = predict_with_lasso(features, model_info)
+                elif model_type == "gamma_glm":
+                    prediction_minutes = predict_with_gamma(features, model_info)
                 else:
-                    logger.warning(f"Skipping case {case.get('i', 'unknown')} for main period metrics: missing t_end or predicted_tt.")        
-            except (KeyError, IndexError, TypeError) as e:
-                logger.warning(f"Skipping case {case.get('i', 'unknown')} in main period metrics due to data issue: {e}")
+                    logger.warning(f"Cannot calculate main period metrics for unknown model type: {model_type}")
+                    continue
+
+
+                if prediction_minutes is not None and case["t_end"] and len(case["t_end"]) > 0:
+                    actual_throughput_time_days = np.max(case["t_end"]) - case["q"]
+                    actual_throughput_time_minutes = actual_throughput_time_days * 24 * 60
+                    
+                    main_period_predictions.append(prediction_minutes)
+                    main_period_actuals.append(actual_throughput_time_minutes)
+            except Exception as e:
+                logger.warning(f"Skipping case for main period metrics due to error: {e}")
                 continue
     
-    if len(predictions_main_days) == 0:
-        logger.warning("No valid main period cases found for metrics calculation.")
+    if not main_period_predictions or not main_period_actuals:
+        logger.info("No valid cases found for calculating main period model metrics.")
         return float('nan'), float('nan'), 0
-    
-    predictions_array_days = np.array(predictions_main_days)
-    actuals_array_days = np.array(actuals_main_days)
-    
-    mae_main_days = np.mean(np.abs(predictions_array_days - actuals_array_days))
-    mse_main_days = np.mean((predictions_array_days - actuals_array_days) ** 2)
-    n_main_cases = len(predictions_main_days)
-    
-    logger.info(f"Main period metrics (N={n_main_cases}): MAE={mae_main_days:.4f} days, MSE={mse_main_days:.4f} days^2.")
-    logger.info(f"  Dynamic LASSO model used for {n_main_dynamic_used} main period cases.")
-    logger.info(f"  Static fallback model used for {n_main_static_used} main period cases.")
 
-    return float(mae_main_days), float(mse_main_days), n_main_cases
+    mae_main = mean_absolute_error(main_period_actuals, main_period_predictions)
+    mse_main = mean_squared_error(main_period_actuals, main_period_predictions)
+    n_main = len(main_period_actuals)
+    
+    logger.info(f"Main period metrics ({model_type}): MAE={mae_main:.4f} min, MSE={mse_main:.4f} min, N={n_main}")
+    
+    return mae_main, mse_main, n_main
 
 
-def train_model_on_burn_in(case_list: List[Dict], run_dir: Path) -> Optional[Dict]:
+def train_model_on_burn_in(
+    case_list: List[Dict], 
+    run_dir: Path,
+    throughput_model_type: str = "Lasso",
+    model_penalty_alpha: float = 0.1
+) -> Optional[Dict]:
     """
-    Train a throughput prediction model based on data from the burn-in period.
-    This function now trains a LASSO model.
-    
-    Args:
-        case_list: List of all case dictionaries (includes burn-in and main period cases)
-        run_dir: Path to the current run's directory for saving the model.
-        
-    Returns:
-        Dictionary containing the trained model's parameters and metadata, or None if training fails.
+    Train a throughput time prediction model using data from the burn-in period.
+    Saves the model_info to a JSON file in the run_dir/models.
     """
-    logger.info("Starting dynamic throughput model training on burn-in data (using LASSO).")
+    logger.info(f"Starting dynamic throughput model training ({throughput_model_type}) on burn-in data with penalty alpha={model_penalty_alpha}...")
     
-    # extract_training_data_from_cases filters for burn-in cases itself
-    X_train, y_train_minutes = extract_training_data_from_cases(case_list) 
+    X_train, y_train_minutes = extract_training_data_from_cases(case_list)
     
-    if X_train.shape[0] == 0: # Check if any training samples were actually extracted
-        logger.warning("No training data extracted from burn-in period (X_train is empty). Cannot train dynamic LASSO model.")
-        return None # Indicate failure: no data
-        
-    # Feature names must match the order in extract_features_from_case
-    feature_names = ["year"] + \
-                    [f"month_{i}" for i in range(1, 13)] + \
-                    [f"day_{i}" for i in range(1, 32)] + \
-                    [f"weekday_{i}" for i in range(7)] + \
-                    [f"hour_{i}" for i in range(24)] + \
-                    ["topic_d_2", "topic_g_1", "topic_j_1", "topic_q_3", "topic_r_2", 
-                     "topic_w_1", "topic_w_2", "topic_z_2", "topic_z_3", "topic_z_4"] # Matching the order in case_topics_ordered_for_betas
+    if X_train.shape[0] == 0:
+        logger.warning("No training data extracted. Dynamic model training aborted.")
+        return {"training_successful": False, "error": "No training data from burn-in"}
 
-    if X_train.shape[1] != len(feature_names):
-        logger.error(f"Mismatch between number of features in training data ({X_train.shape[1]}) and expected feature_names count ({len(feature_names)}). Features expected: {feature_names}")
-        # This indicates a problem in feature extraction or feature_names list.
-        return None 
+    # Define feature names based on the extract_features_from_case logic
+    # Year (1) + Month (12) + Day (31) + Weekday (7) + Hour (24) + Topics (10) = 85 features
+    feature_names = ['year'] + \
+                    [f'month_{i+1}' for i in range(12)] + \
+                    [f'day_{i+1}' for i in range(31)] + \
+                    [f'weekday_{i}' for i in range(7)] + \
+                    [f'hour_{i}' for i in range(24)] + \
+                    ["d_2", "g_1", "j_1", "q_3", "r_2", "w_1", "w_2", "z_2", "z_3", "z_4"] # Topic feature names
 
-    # Train the LASSO model. Alpha is hardcoded in train_lasso_regression (0.1 by default)
-    # but can be overridden if train_lasso_regression is modified or if passed here.
-    logger.info(f"Training LASSO model with default alpha on {X_train.shape[0]} samples and {X_train.shape[1]} features.")
-    model_info = train_lasso_regression(X_train, y_train_minutes, feature_names=feature_names)
-                                         
-    if model_info and model_info.get("training_successful"):
-        # model_type: "lasso" is already set by train_lasso_regression
-        
-        # Define where to save the model file
-        model_output_dir = run_dir / "models" # Store in a 'models' subdirectory
-        model_output_dir.mkdir(parents=True, exist_ok=True) # Ensure directory exists
-        model_filepath = model_output_dir / "dynamic_throughput_model.json"
-        
-        save_model(model_info, model_filepath) # save_model also ensures parent dir exists
-        logger.info(f"Dynamic LASSO throughput model trained successfully and saved to {model_filepath}")
-        logger.info(f"  Model Type: {model_info.get('model_type')}")
-        logger.info(f"  LASSO Intercept: {model_info.get('intercept')}")
-        # logger.info(f"  LASSO Betas: {model_info.get('betas')}") # Usually too verbose for console
-        logger.info(f"  LASSO Alpha: {model_info.get('alpha')}")
-        logger.info(f"  Training Samples: {model_info.get('n_training_samples')}")
-        logger.info(f"  MAE (burn-in, minutes): {model_info.get('mae_burnin')}")
-        logger.info(f"  MSE (burn-in, minutes): {model_info.get('mse_burnin')}")
+    model_info: Optional[Dict] = None
+    
+    if throughput_model_type.lower() == "lasso":
+        logger.info(f"Training LASSO model with alpha={model_penalty_alpha}")
+        model_info = train_lasso_regression(
+            X_train, 
+            y_train_minutes, 
+            alpha=model_penalty_alpha,
+            feature_names=feature_names
+        )
+    elif throughput_model_type.lower() == "gamma_glm":
+        logger.info(f"Training Gamma GLM (log link) with L2 alpha={model_penalty_alpha}")
+        model_info = train_gamma_regression(
+            X_train,
+            y_train_minutes,
+            alpha=model_penalty_alpha,
+            feature_names=feature_names
+        )
     else:
-        logger.error("Dynamic LASSO throughput model training failed.")
-        if model_info and "error" in model_info: # Log error details if available
-             logger.error(f"  Error details: {model_info['error']}")
-        # Ensure a clear None is returned on failure.
-        # The model_info might contain error details, but the function should return None.
-        return None 
+        logger.error(f"Unsupported throughput_model_type: {throughput_model_type}. Training aborted.")
+        return {"training_successful": False, "error": f"Unsupported model type: {throughput_model_type}"}
+
+    if model_info and model_info.get("training_successful"):
+        # Ensure the models directory exists
+        models_path = run_dir / "models"
+        models_path.mkdir(parents=True, exist_ok=True)
         
+        # Save model_info (which includes model_type)
+        model_filepath = models_path / "dynamic_throughput_model.json"
+        save_model(model_info, model_filepath)
+        logger.info(f"Dynamic throughput model ({throughput_model_type}) trained and saved to {model_filepath}")
+    else:
+        logger.error(f"Dynamic throughput model ({throughput_model_type}) training failed. Check logs.")
+        # Ensure model_info is not None if training was attempted but failed within the specific trainer
+        if model_info is None:
+            model_info = {"training_successful": False, "error": "Training function returned None", "model_type": throughput_model_type}
+        elif not model_info.get("training_successful"): # Ensure training_successful is False
+            model_info["training_successful"] = False
+
     return model_info

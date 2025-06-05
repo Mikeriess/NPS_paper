@@ -21,7 +21,8 @@ def create_example_json():
         "F_ceiling_value": [2.5],
         "F_burn_in": [0],
         "F_days": [50],
-        "F_fit_on_burn_in": ["Static", "Train"],
+        "F_throughput_model": ["Static", "Lasso", "Gamma_GLM"],
+        "F_throughput_model_penalty": [0.1],
         "F_NPS_dist_bias": [-2, -1, -0.5, 0, 0.5, 1, 2],
         "F_tNPS_wtime_effect_bias": [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0],
         "startdate": ["2018-07-01"],
@@ -68,7 +69,7 @@ def main():
     df = build_full_fact(run_settings)
     
     # Get string values back
-    df = fix_label_values(df, run_settings, variables=["F_priority_scheme", "F_hard_ceiling", "F_fit_on_burn_in", "startdate"])
+    df = fix_label_values(df, run_settings, variables=["F_priority_scheme", "F_hard_ceiling", "F_throughput_model", "startdate"])
     
     # If burn in period is incorrectly specified, increase days by burn-in period
     for day in df.index:
@@ -80,7 +81,8 @@ def main():
     df.repetition = df.repetition.astype(int)
     df.F_days = df.F_days.astype(int)
     df.F_burn_in = df.F_burn_in.astype(int)
-    # F_fit_on_burn_in is now handled as string, no conversion needed
+    # F_throughput_model is now handled as string, no conversion needed
+    # F_throughput_model_penalty will be float by default from build_full_fact
     
     # Placeholder variables
     float_placeholder_variables = [

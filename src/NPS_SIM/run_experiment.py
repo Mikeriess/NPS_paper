@@ -217,7 +217,8 @@ def process_single_run(args: Tuple[int, pd.Series, Path]) -> Tuple[int, Dict[str
             "F_ceiling_value": float(settings["F_ceiling_value"]),
             "F_days": int(settings["F_days"]),
             "F_burn_in": int(settings["F_burn_in"]),
-            "F_fit_on_burn_in": str(settings.get("F_fit_on_burn_in", "Static")),  # Default to "Static" if not present
+            "F_throughput_model": str(settings["F_throughput_model"]),
+            "F_throughput_model_penalty": float(settings["F_throughput_model_penalty"]),
             "F_NPS_dist_bias": float(settings["F_NPS_dist_bias"]),
             "F_tNPS_wtime_effect_bias": float(settings["F_tNPS_wtime_effect_bias"]),
             "seed": seed_value,  # Explicitly pass the seed

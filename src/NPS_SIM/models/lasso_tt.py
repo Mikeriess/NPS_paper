@@ -5,7 +5,8 @@ LASSO Throughput Time Prediction Model
 This module provides functionality for training a LASSO regression model
 for throughput time prediction and using it for inference.
 
-Hyperparameters like alpha are currently hardcoded for simplicity.
+The 'alpha' parameter controls L1 regularization strength and corresponds to
+the F_throughput_model_penalty from the simulation design.
 """
 
 import numpy as np
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 def train_lasso_regression(
     X: np.ndarray, 
     y_minutes: np.ndarray, 
-    alpha: float = 0.1, 
+    alpha: float = 0.1, # L1 regularization strength (F_throughput_model_penalty)
     feature_names: Optional[List[str]] = None
 ) -> Dict:
     """
@@ -29,7 +30,7 @@ def train_lasso_regression(
     Args:
         X: Feature matrix of shape (n_samples, n_features)
         y_minutes: Target vector of shape (n_samples,) representing throughput time in minutes.
-        alpha: LASSO regularization strength.
+        alpha: LASSO L1 regularization strength (corresponds to F_throughput_model_penalty).
         feature_names: List of feature names.
 
     Returns:
@@ -72,7 +73,7 @@ def train_lasso_regression(
             "model_type": "lasso",
             "intercept": float(intercept),
             "betas": betas,
-            "alpha": float(alpha),
+            "alpha_l1": float(alpha), # Clarified alpha is L1 penalty (F_throughput_model_penalty)
             "n_features": n_features,
             "n_training_samples": n_samples,
             "mae_burnin": float(mae_burnin), # MAE on original scale (minutes)
@@ -81,12 +82,12 @@ def train_lasso_regression(
             "feature_names": feature_names if feature_names else ["feature_" + str(i) for i in range(n_features)]
         }
         logger.info(
-            f"LASSO model training successful. Alpha: {alpha}, MAE (minutes): {mae_burnin:.4f}, MSE (minutes): {mse_burnin:.4f}, Samples: {n_samples}"
+            f"LASSO model training successful. Alpha (L1): {alpha}, MAE (minutes): {mae_burnin:.4f}, MSE (minutes): {mse_burnin:.4f}, Samples: {n_samples}"
         )
 
     except Exception as e:
         logger.error(f"Exception during LASSO model training: {e}")
-        model_info = {"training_successful": False, "error": str(e), "model_type": "lasso", "alpha": alpha}
+        model_info = {"training_successful": False, "error": str(e), "model_type": "lasso", "alpha_l1": alpha}
     
     return model_info
 

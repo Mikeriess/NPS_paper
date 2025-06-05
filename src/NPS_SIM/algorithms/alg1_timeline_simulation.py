@@ -11,14 +11,16 @@ def Run_simulation(agents,
                    F_ceiling_value, 
                    F_days, 
                    F_burn_in, 
-                   F_fit_on_burn_in,
                    seed, 
                    startdate, 
                    F_NPS_dist_bias,
                    F_tNPS_wtime_effect_bias=1.0,
                    filename="Test_log.csv", 
                    verbose = False,
-                   results_dir="results"):
+                   results_dir="results",
+                   F_throughput_model: str = "Static",
+                   F_throughput_model_penalty: float = 0.1
+                   ):
     """
     Run a simulation with the given parameters.
     
@@ -36,8 +38,6 @@ def Run_simulation(agents,
         Number of days to simulate
     F_burn_in : int
         Number of days for burn-in period
-    F_fit_on_burn_in : str
-        Whether to fit a dynamic model on burn-in data ("Train") or use static model ("Static")
     seed : int
         Random seed for reproducibility
     startdate : datetime
@@ -52,6 +52,10 @@ def Run_simulation(agents,
         Whether to print detailed output
     results_dir : str
         Directory where results should be stored
+    F_throughput_model : str
+        Type of throughput model to use/train ("Static", "Lasso", "Gamma_GLM").
+    F_throughput_model_penalty : float
+        Penalty (alpha) parameter for the dynamic throughput model (Lasso or Gamma_GLM).
         
     Returns:
     --------
@@ -250,8 +254,8 @@ def Run_simulation(agents,
             print("Duration in minutes:",Time_sec/60)
             
         # Train dynamic throughput model at the end of burn-in period
-        if d == F_burn_in and F_fit_on_burn_in == "Train" and F_burn_in > 0:
-            print(f"End of burn-in period (day {d}). Training dynamic throughput model...")
+        if d == F_burn_in and F_throughput_model != "Static" and F_burn_in > 0:
+            print(f"End of burn-in period (day {d}). Training dynamic throughput model ({F_throughput_model}) with penalty {F_throughput_model_penalty}...")
             try:
                 from models.dynamic_throughput import train_model_on_burn_in
                 
@@ -264,7 +268,12 @@ def Run_simulation(agents,
                     case["burn_in"] = case["q"] < F_burn_in
                 
                 # Train model on burn-in cases
-                dynamic_model_info = train_model_on_burn_in(L, run_dir)
+                dynamic_model_info = train_model_on_burn_in(
+                    case_list=L, 
+                    run_dir=run_dir,
+                    throughput_model_type=F_throughput_model,
+                    model_penalty_alpha=F_throughput_model_penalty
+                )
                 
                 if dynamic_model_info and dynamic_model_info.get("training_successful", False):
                     print(f"Dynamic model training successful. {dynamic_model_info['n_training_samples']} samples used.")
