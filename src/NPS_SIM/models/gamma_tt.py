@@ -60,7 +60,6 @@ def train_gamma_regression(
         alpha=alpha,
         fit_intercept=True,
         max_iter=10000, # Increased max_iter for potentially harder convergence
-        random_state=42 # Added random_state for reproducibility
     )
 
     try:
