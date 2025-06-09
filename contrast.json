@@ -1,0 +1,20 @@
+{
+    "F_priority_scheme": ["NPS", "FCFS", "SRTF", "LRTF"],
+    "F_number_of_agents": [3, 4],
+    "F_hard_ceiling": ["NONE"],
+    "F_fit_on_burn_in": ["Train"],
+    "F_throughput_model": [
+        "Lasso",
+        "Gamma_GLM"
+    ],
+    "F_throughput_model_penalty": [
+        0.1
+    ],
+    "F_ceiling_value": [2.5],
+    "F_burn_in": [100],
+    "F_days": [400],
+    "F_NPS_dist_bias": [-0.5, 0.0, 0.5],
+    "F_tNPS_wtime_effect_bias": [1.0, 10.0, 25.0, 50.0],
+    "startdate": ["2018-07-01"],
+    "repetition": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+}

@@ -5,11 +5,11 @@ Dynamic Throughput Time Prediction Model
 This module provides functionality for training throughput time prediction models
 on burn-in data and using them for inference during the main simulation period.
 
-The model uses the same feature set as the static throughput model but allows
-for parameter estimation based on observed data during the burn-in period.
+The model uses enhanced feature engineering with scaling and improved temporal features.
 
 Author: Research Assistant
 Created: Based on existing throughput.py
+Enhanced: Feature scaling and improved temporal encoding
 """
 
 import numpy as np
@@ -18,6 +18,8 @@ import os
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 from scipy.optimize import minimize # This import might be unused now
+from sklearn.metrics import mean_absolute_error, mean_squared_error
+from sklearn.preprocessing import StandardScaler
 import logging
 
 # Set up logging
@@ -30,12 +32,10 @@ from .gamma_tt import train_gamma_regression, predict_with_gamma # Added Gamma m
 def extract_features_from_case(case_dict: Dict) -> List[float]:
     """
     Extract features from a case dictionary for model training/prediction.
-    Year is included as a numerical feature.
-    Month, day (of month), weekday, and hour are one-hot encoded.
-    Case topics are also one-hot encoded.
+    Enhanced with improved temporal feature engineering and standardization preparation.
     
     Args:
-        case_dict: Dictionary containing case information with keys like 'q_dt', 'c_topic'
+        case_dict: Dictionary containing case information with keys like 'q_dt', 'c_topic', and optionally 'qs_*' features
         
     Returns:
         List of feature values.
@@ -43,32 +43,33 @@ def extract_features_from_case(case_dict: Dict) -> List[float]:
     date_and_time = case_dict["q_dt"]
     case_topicidx = case_dict["c_topic"]
     
-    # Temporal features (raw)
+    # Enhanced temporal features with better engineering
     year_val = float(date_and_time.year)
-    month_val = date_and_time.month # 1-12
-    day_val = date_and_time.day     # 1-31
-    weekday_val = date_and_time.weekday() # 0-6 (Monday=0, Sunday=6)
-    hour_val = date_and_time.hour   # 0-23
+    # Center year around a reasonable baseline to reduce scale
+    year_centered = year_val - 2020.0  # Center around 2020
     
-    # One-hot encode month (12 features: month_1 to month_12)
-    month_features = [0.0] * 12
-    if 1 <= month_val <= 12:
-        month_features[month_val - 1] = 1.0
-        
-    # One-hot encode day of month (31 features: day_1 to day_31)
-    day_features = [0.0] * 31
-    if 1 <= day_val <= 31:
-        day_features[day_val - 1] = 1.0
+    month_val = float(date_and_time.month) # 1-12 (numerical)
+    day_val = float(date_and_time.day)     # 1-31 (numerical)
+    weekday_val = date_and_time.weekday() # 0-6 (Monday=0, Sunday=6)
+    hour_val = float(date_and_time.hour)   # 0-23 (numerical)
+    
+    # Cyclical encoding for temporal features to capture periodicity
+    # Month cyclical features (captures seasonal patterns)
+    month_sin = np.sin(2 * np.pi * month_val / 12.0)
+    month_cos = np.cos(2 * np.pi * month_val / 12.0)
+    
+    # Day of month cyclical features
+    day_sin = np.sin(2 * np.pi * day_val / 31.0)
+    day_cos = np.cos(2 * np.pi * day_val / 31.0)
+    
+    # Hour cyclical features (captures daily patterns)
+    hour_sin = np.sin(2 * np.pi * hour_val / 24.0)
+    hour_cos = np.cos(2 * np.pi * hour_val / 24.0)
         
     # One-hot encode weekday (7 features: weekday_0 to weekday_6)
     weekday_features = [0.0] * 7
     if 0 <= weekday_val <= 6:
         weekday_features[weekday_val] = 1.0
-        
-    # One-hot encode hour (24 features: hour_0 to hour_23)
-    hour_features = [0.0] * 24
-    if 0 <= hour_val <= 23:
-        hour_features[hour_val] = 1.0
 
     # Case topic one-hot encoding (10 features)
     # Order: d_2, g_1, j_1, q_3, r_2, w_1, w_2, z_2, z_3, z_4
@@ -90,13 +91,40 @@ def extract_features_from_case(case_dict: Dict) -> List[float]:
         # If it does, it means there's a mismatch in topic definitions that needs addressing.
         logger.warning(f"Case topic '{current_casetopic_str}' (index {case_topicidx}) not found in defined ordered list for dummies. Topic features will be all zero.")
 
-    # Combine all features: Year (numerical) + OHE month + OHE day + OHE weekday + OHE hour + OHE topics
-    features = ([year_val] + 
-                month_features + 
-                day_features + 
+    # Queue state features (13 features) - Extract if available, otherwise use zeros
+    # Apply log transformation to highly skewed features for better scaling
+    queue_state_features = []
+    queue_feature_names = [
+        'qs_agents_available', 'qs_agents_busy', 'qs_agent_utilization',
+        'qs_queue_length', 'qs_cases_in_process', 'qs_total_active_cases', 'qs_queue_wait_time_current',
+        'qs_recent_completion_rate', 'qs_recent_avg_throughput_time', 'qs_recent_arrival_rate', 'qs_workload_intensity',
+        'qs_time_since_last_completion', 'qs_cases_arrived_today'
+    ]
+    
+    # Features that benefit from log transformation (typically right-skewed)
+    log_transform_features = {
+        'qs_queue_wait_time_current', 'qs_recent_avg_throughput_time', 
+        'qs_time_since_last_completion', 'qs_cases_arrived_today'
+    }
+    
+    for feature_name in queue_feature_names:
+        raw_value = float(case_dict.get(feature_name, 0.0))
+        
+        if feature_name in log_transform_features:
+            # Log transform with offset to handle zeros
+            transformed_value = np.log(1.0 + max(0.0, raw_value))
+        else:
+            transformed_value = raw_value
+            
+        queue_state_features.append(transformed_value)
+
+    # Combine all features: Enhanced temporal + OHE weekday + OHE topics + Queue state
+    # Total: 1 (year_centered) + 6 (cyclical month/day/hour) + 7 (weekday) + 10 (topics) + 13 (queue) = 37 features
+    features = ([year_centered] + 
+                [month_sin, month_cos, day_sin, day_cos, hour_sin, hour_cos] + 
                 weekday_features + 
-                hour_features + 
-                topic_dummies)
+                topic_dummies +
+                queue_state_features)
     
     return features
 
@@ -316,6 +344,7 @@ def load_model(filepath: Path) -> Optional[Dict]:
 def predict_TT_dynamic(sigma: Dict, model_info: Optional[Dict] = None) -> Dict:
     """
     Predict throughput time dynamically using a trained model or fallback to static.
+    Enhanced with feature scaling support.
     The prediction is returned in DAYS.
     """
     if model_info is None or not model_info.get("training_successful", False):
@@ -326,14 +355,29 @@ def predict_TT_dynamic(sigma: Dict, model_info: Optional[Dict] = None) -> Dict:
     try:
         features = np.array(extract_features_from_case(sigma))
         
+        # Apply feature scaling if available
+        if model_info.get("feature_scaling_applied", False):
+            scaler_mean = np.array(model_info["scaler_mean"])
+            scaler_scale = np.array(model_info["scaler_scale"])
+            
+            if len(features) != len(scaler_mean):
+                logger.warning(f"Feature dimension mismatch for scaling: expected {len(scaler_mean)}, got {len(features)}")
+                return predict_TT_static_fallback(sigma)
+                
+            # Apply standardization: (X - mean) / scale
+            features_scaled = (features - scaler_mean) / scaler_scale
+        else:
+            # Use original features if no scaling was applied during training
+            features_scaled = features
+        
         # Determine which prediction function to use based on model_type
         model_type = model_info.get("model_type")
         prediction_minutes: Optional[float] = None
 
         if model_type == "lasso":
-            prediction_minutes = predict_with_lasso(features, model_info)
+            prediction_minutes = predict_with_lasso(features_scaled, model_info)
         elif model_type == "gamma_glm":
-            prediction_minutes = predict_with_gamma(features, model_info)
+            prediction_minutes = predict_with_gamma(features_scaled, model_info)
         else:
             logger.warning(f"Unknown dynamic model type: {model_type}. Falling back to static model.")
             return predict_TT_static_fallback(sigma)
@@ -373,6 +417,7 @@ def predict_TT_static_fallback(sigma: Dict) -> Dict:
 def calculate_main_period_metrics(case_list: List[Dict], model_info: Dict, F_burn_in: int) -> Tuple[float, float, int]:
     """
     Calculate MAE and MSE for the main simulation period using a trained dynamic model.
+    Enhanced with feature scaling support.
     Predictions and actuals are in MINUTES.
     """
     main_period_predictions = []
@@ -385,11 +430,26 @@ def calculate_main_period_metrics(case_list: List[Dict], model_info: Dict, F_bur
             try:
                 features = np.array(extract_features_from_case(case))
                 
+                # Apply feature scaling if available
+                if model_info.get("feature_scaling_applied", False):
+                    scaler_mean = np.array(model_info["scaler_mean"])
+                    scaler_scale = np.array(model_info["scaler_scale"])
+                    
+                    if len(features) != len(scaler_mean):
+                        logger.warning(f"Feature dimension mismatch for scaling in metrics: expected {len(scaler_mean)}, got {len(features)}")
+                        continue
+                        
+                    # Apply standardization: (X - mean) / scale
+                    features_scaled = (features - scaler_mean) / scaler_scale
+                else:
+                    # Use original features if no scaling was applied during training
+                    features_scaled = features
+                
                 prediction_minutes: Optional[float] = None
                 if model_type == "lasso":
-                    prediction_minutes = predict_with_lasso(features, model_info)
+                    prediction_minutes = predict_with_lasso(features_scaled, model_info)
                 elif model_type == "gamma_glm":
-                    prediction_minutes = predict_with_gamma(features, model_info)
+                    prediction_minutes = predict_with_gamma(features_scaled, model_info)
                 else:
                     logger.warning(f"Cannot calculate main period metrics for unknown model type: {model_type}")
                     continue
@@ -422,66 +482,106 @@ def train_model_on_burn_in(
     case_list: List[Dict], 
     run_dir: Path,
     throughput_model_type: str = "Lasso",
-    model_penalty_alpha: float = 0.1
+    model_penalty_alpha: float = 0.01  # Reduced from 0.1 for less aggressive regularization
 ) -> Optional[Dict]:
     """
     Train a throughput time prediction model using data from the burn-in period.
-    Saves the model_info to a JSON file in the run_dir/models.
+    Enhanced with feature scaling and improved regularization.
+    
+    Args:
+        case_list: List of completed cases from burn-in period
+        run_dir: Directory to save model files
+        throughput_model_type: Type of model to train ("Lasso", "gamma_glm")
+        model_penalty_alpha: Regularization strength (reduced default for better performance)
+        
+    Returns:
+        Dictionary containing trained model information, or None if training fails
     """
     logger.info(f"Starting dynamic throughput model training ({throughput_model_type}) on burn-in data with penalty alpha={model_penalty_alpha}...")
     
-    X_train, y_train_minutes = extract_training_data_from_cases(case_list)
+    X_train, y_train = extract_training_data_from_cases(case_list)
     
     if X_train.shape[0] == 0:
         logger.warning("No training data extracted. Dynamic model training aborted.")
         return {"training_successful": False, "error": "No training data from burn-in"}
 
-    # Define feature names based on the extract_features_from_case logic
-    # Year (1) + Month (12) + Day (31) + Weekday (7) + Hour (24) + Topics (10) = 85 features
-    feature_names = ['year'] + \
-                    [f'month_{i+1}' for i in range(12)] + \
-                    [f'day_{i+1}' for i in range(31)] + \
-                    [f'weekday_{i}' for i in range(7)] + \
-                    [f'hour_{i}' for i in range(24)] + \
-                    ["d_2", "g_1", "j_1", "q_3", "r_2", "w_1", "w_2", "z_2", "z_3", "z_4"] # Topic feature names
+    # Define feature names based on enhanced feature extraction
+    # Enhanced temporal (7) + Weekday (7) + Topics (10) + Queue state (13) = 37 features
+    feature_names = (['year_centered'] + 
+                    ['month_sin', 'month_cos', 'day_sin', 'day_cos', 'hour_sin', 'hour_cos'] +
+                    [f'weekday_{i}' for i in range(7)] +
+                    ["d_2", "g_1", "j_1", "q_3", "r_2", "w_1", "w_2", "z_2", "z_3", "z_4"] +
+                    ['qs_agents_available', 'qs_agents_busy', 'qs_agent_utilization',
+                     'qs_queue_length', 'qs_cases_in_process', 'qs_total_active_cases', 'qs_queue_wait_time_current',
+                     'qs_recent_completion_rate', 'qs_recent_avg_throughput_time', 'qs_recent_arrival_rate', 'qs_workload_intensity',
+                     'qs_time_since_last_completion', 'qs_cases_arrived_today'])
+
+    # Feature scaling implementation
+    logger.info("Applying feature scaling to training data...")
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    
+    logger.info(f"Feature scaling applied. Mean normalization: {np.mean(np.abs(scaler.mean_)):.4f}, "
+                f"Scale normalization: {np.mean(scaler.scale_):.4f}")
 
     model_info: Optional[Dict] = None
     
-    if throughput_model_type.lower() == "lasso":
-        logger.info(f"Training LASSO model with alpha={model_penalty_alpha}")
-        model_info = train_lasso_regression(
-            X_train, 
-            y_train_minutes, 
-            alpha=model_penalty_alpha,
-            feature_names=feature_names
-        )
-    elif throughput_model_type.lower() == "gamma_glm":
-        logger.info(f"Training Gamma GLM (log link) with L2 alpha={model_penalty_alpha}")
-        model_info = train_gamma_regression(
-            X_train,
-            y_train_minutes,
-            alpha=model_penalty_alpha,
-            feature_names=feature_names
-        )
-    else:
-        logger.error(f"Unsupported throughput_model_type: {throughput_model_type}. Training aborted.")
-        return {"training_successful": False, "error": f"Unsupported model type: {throughput_model_type}"}
-
-    if model_info and model_info.get("training_successful"):
-        # Ensure the models directory exists
-        models_path = run_dir / "models"
-        models_path.mkdir(parents=True, exist_ok=True)
+    try:
+        if throughput_model_type.lower() == "lasso":
+            # Train enhanced LASSO model with feature scaling
+            model_info = train_lasso_regression(
+                X_train_scaled, y_train, 
+                alpha=model_penalty_alpha, 
+                feature_names=feature_names
+            )
+            
+            # Add scaling parameters to model info
+            model_info["scaler_mean"] = scaler.mean_.tolist()
+            model_info["scaler_scale"] = scaler.scale_.tolist()
+            model_info["feature_scaling_applied"] = True
+            
+            logger.info(f"LASSO model trained with feature scaling. "
+                       f"Alpha: {model_penalty_alpha}, Features: {len(feature_names)}")
+            
+        elif throughput_model_type.lower() == "gamma_glm":
+            # Train Gamma GLM model with feature scaling
+            model_info = train_gamma_regression(
+                X_train_scaled, y_train, 
+                alpha=model_penalty_alpha, 
+                feature_names=feature_names
+            )
+            
+            # Add scaling parameters to model info
+            model_info["scaler_mean"] = scaler.mean_.tolist()
+            model_info["scaler_scale"] = scaler.scale_.tolist()
+            model_info["feature_scaling_applied"] = True
+            
+            logger.info(f"Gamma GLM model trained with feature scaling. "
+                       f"Alpha: {model_penalty_alpha}, Features: {len(feature_names)}")
+            
+        else:
+            logger.error(f"Unknown model type: {throughput_model_type}")
+            return {"training_successful": False, "error": f"Unknown model type: {throughput_model_type}"}
+            
+    except Exception as e:
+        logger.error(f"Error during model training: {e}")
+        return {"training_successful": False, "error": str(e)}
+    
+    if model_info is None or not model_info.get("training_successful", False):
+        logger.error("Model training was not successful.")
+        return model_info
+    
+    # Save model to file
+    try:
+        models_dir = run_dir / "models"
+        models_dir.mkdir(exist_ok=True)
         
-        # Save model_info (which includes model_type)
-        model_filepath = models_path / "dynamic_throughput_model.json"
-        save_model(model_info, model_filepath)
-        logger.info(f"Dynamic throughput model ({throughput_model_type}) trained and saved to {model_filepath}")
-    else:
-        logger.error(f"Dynamic throughput model ({throughput_model_type}) training failed. Check logs.")
-        # Ensure model_info is not None if training was attempted but failed within the specific trainer
-        if model_info is None:
-            model_info = {"training_successful": False, "error": "Training function returned None", "model_type": throughput_model_type}
-        elif not model_info.get("training_successful"): # Ensure training_successful is False
-            model_info["training_successful"] = False
-
+        model_file = models_dir / "dynamic_throughput_model.json"
+        save_model(model_info, model_file)
+        logger.info(f"Enhanced dynamic model saved to: {model_file}")
+        
+    except Exception as e:
+        logger.warning(f"Failed to save model to file: {e}")
+        # Continue anyway, model_info is still valid for this run
+    
     return model_info

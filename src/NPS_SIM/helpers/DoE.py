@@ -1,4 +1,3 @@
-
 """
 GENR the experiments:
 """
@@ -9,13 +8,20 @@ def fix_label_values(df, run_settings, variables):
         df["Name_fix"] = 0
         for variable in variables:
             for run in df.index:
-                idx = int(df[variable].loc[run])
-                value = run_settings[variable][idx]
-                df[variable].loc[run] = value
+                current_value = df.loc[run, variable]
+                # Check if the value is already a string (already converted) or still an index
+                if isinstance(current_value, str):
+                    # Already converted, skip
+                    continue
+                else:
+                    # Convert index to actual value
+                    idx = int(current_value)
+                    value = run_settings[variable][idx]
+                    df.loc[run, variable] = value
 
         df["Name_fix"] = 1
     
-    df = df.drop("Name_fix",axis=1)
+    df = df.drop("Name_fix", axis=1)
     return df
 
 def fullfact_corrected(levels):
@@ -83,13 +89,19 @@ def fullfact_corrected(levels):
      
     return H
 
-def construct_df(x,r):
+def construct_df(x, r):
     import numpy as np
     import pandas as pd
-    df=pd.DataFrame(data=x,dtype='float32')
-    for i in df.index:
-        for j in range(len(list(df.iloc[i]))):
-            df.iloc[i][j]=r[j][int(df.iloc[i][j])]
+    
+    # Create DataFrame with object dtype to handle mixed data types properly
+    df = pd.DataFrame(data=x, dtype='object')
+    
+    # Use proper DataFrame indexing to avoid chained assignment and precision loss
+    for i in range(len(df)):
+        for j in range(len(df.columns)):
+            factor_idx = int(x[i, j])
+            df.iloc[i, j] = r[j][factor_idx]
+    
     return df
 
 def build_full_fact(factor_level_ranges):
@@ -101,15 +113,15 @@ def build_full_fact(factor_level_ranges):
     {'Pressure':[50,60,70],'Temperature':[290, 320, 350],'Flow rate':[0.9,1.0]}
     """
     
-    factor_lvl_count=[]
-    factor_lists=[]
+    factor_lvl_count = []
+    factor_lists = []
     
     for key in factor_level_ranges:
         factor_lvl_count.append(len(factor_level_ranges[key]))
         factor_lists.append(factor_level_ranges[key])
     
     x = fullfact_corrected(factor_lvl_count)
-    df=construct_df(x,factor_lists)
-    df.columns=factor_level_ranges.keys()
+    df = construct_df(x, factor_lists)
+    df.columns = factor_level_ranges.keys()
     
     return df

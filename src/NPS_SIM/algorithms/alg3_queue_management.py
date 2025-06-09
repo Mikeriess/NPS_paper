@@ -20,10 +20,15 @@ def QueueManagement(Case_DB,
                     ceiling, 
                     F_ceiling_value, 
                     time_interval, 
+                    current_day=0,
+                    F_burn_in=0,
                     seed=2021, 
                     verbose=False):
     """
     This function determines the queue order based on the chosen priority scheme.
+    
+    During the burn-in period, FCFS is automatically applied regardless of P_scheme
+    to ensure dynamic models are trained on FCFS-prioritized data only.
     
     Parameters:
     -----------
@@ -31,12 +36,17 @@ def QueueManagement(Case_DB,
         The case database with all cases
     P_scheme : str
         Priority scheme to use (FCFS, SIRO, SRTF, LRTF, NPS)
+        Note: Automatically overridden to FCFS during burn-in period
     ceiling : str
         Type of ceiling (NO, SLA)
     F_ceiling_value : float
         Value for the ceiling if using SLA
     time_interval : float
         Current time interval
+    current_day : float
+        Current simulation day (for burn-in logic)
+    F_burn_in : int
+        Number of burn-in days
     seed : int
         Random seed for reproducibility
     verbose : bool
@@ -50,6 +60,15 @@ def QueueManagement(Case_DB,
     
     import numpy as np
     np.random.seed(seed)
+    
+    # Override P_scheme to FCFS during burn-in period
+    original_P_scheme = P_scheme
+    if current_day < F_burn_in and P_scheme != "FCFS":
+        P_scheme = "FCFS"
+        if verbose:
+            print(f"Day {current_day:.3f}: Burn-in period - overriding {original_P_scheme} with FCFS")
+    elif current_day >= F_burn_in and verbose and original_P_scheme != "FCFS":
+        print(f"Day {current_day:.3f}: Post burn-in - using {original_P_scheme}")
     
     """
     Only use queued cases for sorting

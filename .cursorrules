@@ -36,8 +36,9 @@ You MUST be aware of the following project details:
 
 ## Strict Rule: No Unsolicited error-handling
 **CRITICAL:** Your role is to implement changes to the codebase when prompted by the user. However, in this project it is important for the user to know when things dont work as they should, so that they can reason about this and make changes. 
-    1. Do not implement exception handling as a default.
-    2. *Always* report when doing exception handling - the user needs to be notified.
+    1. *Do not* implement exception handling as a default.
+    2- *Do not* handle errors gracefully, let the script fail.
+    3. *Always* report when doing exception handling - the user needs to be notified.
 
 ## Expected Interactions & Assistance
 

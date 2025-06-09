@@ -69,12 +69,10 @@ def main():
     df = build_full_fact(run_settings)
     
     # Get string values back
-    df = fix_label_values(df, run_settings, variables=["F_priority_scheme", "F_hard_ceiling", "F_throughput_model", "startdate"])
+    df = fix_label_values(df, run_settings, variables=["F_priority_scheme", "F_hard_ceiling", "F_fit_on_burn_in", "F_throughput_model", "startdate"])
     
-    # If burn in period is incorrectly specified, increase days by burn-in period
-    for day in df.index:
-        if df.loc[day, "F_burn_in"] <= df.loc[day, "F_days"]:
-            df.loc[day, "F_days"] = df.loc[day, "F_days"] + df.loc[day, "F_burn_in"]
+    # Note: With the new burn-in logic, F_days represents main period duration only
+    # Total simulation time = F_burn_in + F_days (no modification needed)
     
     # Change dtypes
     df.F_number_of_agents = df.F_number_of_agents.astype(int)

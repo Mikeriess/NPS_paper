@@ -62,6 +62,7 @@ The simulation process is broken down into several algorithms:
 3. **alg3_queue_management.py**
    - Implements queue management strategies
    - Handles case prioritization
+   - **Burn-in FCFS Logic:** Automatically applies FCFS during burn-in period regardless of specified priority scheme
 
 4. **alg4_case_assignment.py**
    - Manages case assignment to agents
@@ -126,13 +127,14 @@ sequenceDiagram
     Main->>Arrival: Generate all cases for simulation period
     Arrival->>Main: Return complete case list (Theta)
     
-    Note over Main: Daily Loop (F_days iterations)
+    Note over Main: Daily Loop (F_burn_in + F_days iterations)
     loop Each Day
         Note over Main: 15-minute intervals (96 per day)
         loop 15-min intervals
             Note over Main: Check for queued cases
             alt Cases in queue or being processed
-                Main->>Queue: Apply priority scheme & sort cases
+                Note over Main,Queue: Burn-in Override: Use FCFS if day < F_burn_in
+                Main->>Queue: Apply effective priority scheme & sort cases
                 Queue->>Main: Return updated Case_DB with queue_order
                 Main->>Assignment: Assign available agents to cases
                 Assignment->>Main: Return updated Case_DB, Theta, Psi
@@ -180,6 +182,22 @@ sequenceDiagram
 
 The simulation accepts several key parameters that control its behavior:
 
+#### **Priority Scheme Behavior During Simulation**
+
+**Important:** All experiments automatically use **FCFS prioritization during the burn-in period** regardless of the specified priority scheme. This ensures that:
+- Dynamic models are trained on consistent FCFS baseline data
+- All methods start from the same operational foundation  
+- Post burn-in performance differences represent genuine prioritization effects
+
+**Simulation Timeline:**
+```
+Total Days = F_burn_in + F_days
+
+Days 0 → F_burn_in-1:           FCFS prioritization (automatic override)
+Day F_burn_in:                  Dynamic model training (if enabled) using FCFS data
+Days F_burn_in → (F_burn_in + F_days - 1):  Specified priority scheme (NPS, SRTF, LRTF, etc.)
+```
+
 - **`F_fit_on_burn_in`** *(String Parameter)*:
   - **Description:** Controls whether dynamic model training is performed on burn-in data
   - **Values:** `"Train"` (enable dynamic training) or `"Static"` (use static model only)
@@ -203,9 +221,19 @@ The simulation accepts several key parameters that control its behavior:
   - **Significance:** Enables more realistic throughput time predictions and provides metrics to assess prediction quality
 
 - **`F_burn_in`**:
-  - **Description:** Number of days for the burn-in/warm-up period
-  - **Purpose:** Allows system to reach steady state before measurement
-  - **New Functionality:** When `F_fit_on_burn_in="Train"`, also serves as training period for dynamic model
+  - **Description:** Number of days for the burn-in/warm-up period (ADDED to F_days)
+  - **Purpose:** Allows system to reach steady state before measurement begins
+  - **Total Simulation Time:** `F_burn_in + F_days` days
+  - **Prioritization Behavior:** 
+    - **Days 0 to F_burn_in-1:** FCFS prioritization is automatically applied regardless of specified priority scheme
+    - **Days F_burn_in to (F_burn_in + F_days - 1):** Original specified priority scheme (NPS, SRTF, LRTF, etc.) is used
+  - **Dynamic Model Training:** When `F_fit_on_burn_in="Train"`, serves as training period using FCFS-prioritized data only
+  - **Rationale:** Ensures dynamic models are trained on consistent FCFS baseline data, providing clean comparison for prioritization method effectiveness
+
+- **`F_days`**:
+  - **Description:** Number of days for the main simulation period (AFTER burn-in)
+  - **Purpose:** Duration of the actual measurement period where specified priority schemes are applied
+  - **Total Impact:** Combined with F_burn_in to give total simulation time of `F_burn_in + F_days`
 
 - **Other Parameters:** Number of agents, priority schemes, NPS bias factors, etc.
 
@@ -264,27 +292,41 @@ Standard library modules (included with Python):
 ## Output
 
 The simulation generates:
-- Event logs (`*_log.csv`)
-- Case databases (`*_case_DB.csv`)
+- **Event logs (`*_log.csv`)** with columns including:
+  - `F_priority_scheme`: The originally specified priority scheme
+  - `effective_priority_scheme`: The actually applied priority scheme (FCFS during burn-in, specified scheme after)
+  - `F_days`: Main simulation period duration (AFTER burn-in)
+  - `F_total_days`: Total simulation duration (F_burn_in + F_days)
+  - `F_burn_in`: Burn-in period duration
+  - Standard event and timing information
+- **Case databases (`*_case_DB.csv`)**
 - **Burn-in data** (when `F_burn_in > 0`):
-  - `*_burnin_log.csv`: Event log for burn-in period cases
+  - `*_burnin_log.csv`: Event log for burn-in period cases (all using FCFS prioritization)
   - `*_burnin_case_DB.csv`: Case database for burn-in period cases
 - **Dynamic model files** (when `F_fit_on_burn_in="Train"`):
-  - `dynamic_throughput_model.json`: Trained model parameters and metadata
-- Timeseries snapshots (`*_timeseries.csv`)
-- Experiment results with timing information
-- Performance metrics including:
+  - `dynamic_throughput_model.json`: Trained model parameters and metadata (trained on FCFS data only)
+- **Timeseries snapshots (`*_timeseries.csv`)**
+- **Experiment results with timing information**
+- **Performance metrics** including:
   - Simulated NPS scores
   - Throughput times
   - Queue lengths
   - Agent utilization
   - **Dynamic model performance metrics** (when `F_fit_on_burn_in="Train"`):
-    - MAE and MSE on burn-in training data
+    - MAE and MSE on burn-in training data (from FCFS-prioritized cases)
     - MAE and MSE on main period prediction accuracy
     - Sample sizes for training and evaluation
 
-## Notes
+## Important Implementation Notes
 
+### **Burn-in FCFS Override & Extended Simulation Time**
+- **All experiments automatically use FCFS during burn-in period** regardless of specified priority scheme
+- **Total simulation time = F_burn_in + F_days** (burn-in days are ADDED to main days)
+- This ensures dynamic models are trained on consistent, unbiased baseline data
+- The `effective_priority_scheme` column in event logs tracks which scheme was actually applied
+- Post burn-in results represent true prioritization method performance over the full F_days duration
+
+### **General Notes**
 - The simulation uses fixed random seeds for reproducibility
 - Results are stored in the `results/` directory
 - Each experiment run creates its own subdirectory
