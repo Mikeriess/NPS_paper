@@ -235,6 +235,34 @@ Days F_burn_in → (F_burn_in + F_days - 1):  Specified priority scheme (NPS, SR
   - **Purpose:** Duration of the actual measurement period where specified priority schemes are applied
   - **Total Impact:** Combined with F_burn_in to give total simulation time of `F_burn_in + F_days`
 
+#### **Uniform Duration Mode** *(New Feature)*
+
+- **`F_uniform_duration_mode`** *(String Parameter)*:
+  - **Description:** Controls whether uniform duration mode is enabled for case processing
+  - **Values:** `"DISABLED"` (default) or `"ENABLED"`
+  - **When "DISABLED":**
+    - Uses the standard markov chain process for case activities
+    - Cases follow realistic activity patterns: Task-Reminder → Interaction → Email → END
+    - Activity durations are sampled from Weibull distributions based on case topic, agent personality, and task number
+  - **When "ENABLED":**
+    - **Bypasses the markov chain completely**
+    - Each case has exactly **one activity** followed by END
+    - All cases take exactly the same duration (perfect throughput time prediction)
+    - Activity type is labeled as `"UniformWork"` in event logs
+  - **Purpose:** Enables testing of prioritization methods under perfect throughput time prediction scenarios
+
+- **`F_uniform_duration_minutes`** *(Integer Parameter)*:
+  - **Description:** Duration in minutes for each case when uniform duration mode is enabled
+  - **Default Value:** 180 minutes (3 hours)
+  - **Range:** Any positive integer (e.g., 60, 120, 180, 240)
+  - **Impact:** Controls the total case processing time, which affects:
+    - Overall system throughput
+    - Agent utilization rates
+    - Queue dynamics
+  - **Note:** Only applies when `F_uniform_duration_mode = "ENABLED"`
+
+**Use Case:** This feature is particularly valuable for studying the theoretical upper bound of NPS-based prioritization by eliminating throughput time prediction errors. It answers the research question: *"What is the maximum benefit achievable by improving throughput time prediction accuracy?"*
+
 - **Other Parameters:** Number of agents, priority schemes, NPS bias factors, etc.
 
 ### Distributions
@@ -298,6 +326,9 @@ The simulation generates:
   - `F_days`: Main simulation period duration (AFTER burn-in)
   - `F_total_days`: Total simulation duration (F_burn_in + F_days)
   - `F_burn_in`: Burn-in period duration
+  - `F_uniform_duration_mode`: Whether uniform duration mode was enabled ("ENABLED"/"DISABLED")
+  - `F_uniform_duration_minutes`: Duration in minutes for uniform mode cases (if enabled)
+  - `activity`: Activity type (standard types or "UniformWork" in uniform mode)
   - Standard event and timing information
 - **Case databases (`*_case_DB.csv`)**
 - **Burn-in data** (when `F_burn_in > 0`):

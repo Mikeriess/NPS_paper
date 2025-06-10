@@ -221,6 +221,8 @@ def process_single_run(args: Tuple[int, pd.Series, Path]) -> Tuple[int, Dict[str
             "F_throughput_model_penalty": float(settings["F_throughput_model_penalty"]),
             "F_nps_model": str(settings["F_nps_model"]),
             "F_nps_model_penalty": float(settings["F_nps_model_penalty"]),
+            "F_uniform_duration_mode": str(settings.get("F_uniform_duration_mode", "DISABLED")),
+            "F_uniform_duration_minutes": int(settings.get("F_uniform_duration_minutes", 180)),
             "F_NPS_dist_bias": float(settings["F_NPS_dist_bias"]),
             "F_tNPS_wtime_effect_bias": float(settings["F_tNPS_wtime_effect_bias"]),
             "seed": seed_value,  # Explicitly pass the seed

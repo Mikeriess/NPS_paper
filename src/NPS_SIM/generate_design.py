@@ -68,8 +68,12 @@ def main():
     # Generate a full factorial design
     df = build_full_fact(run_settings)
     
-    # Get string values back
-    df = fix_label_values(df, run_settings, variables=["F_priority_scheme", "F_hard_ceiling", "F_fit_on_burn_in", "F_throughput_model", "startdate"])
+    # Get string values back - only include variables that exist in the settings
+    string_variables = ["F_priority_scheme", "F_hard_ceiling", "F_throughput_model", "F_uniform_duration_mode", "startdate"]
+    # Add F_fit_on_burn_in if it exists in the settings
+    if "F_fit_on_burn_in" in run_settings:
+        string_variables.append("F_fit_on_burn_in")
+    df = fix_label_values(df, run_settings, variables=string_variables)
     
     # Note: With the new burn-in logic, F_days represents main period duration only
     # Total simulation time = F_burn_in + F_days (no modification needed)
@@ -79,7 +83,10 @@ def main():
     df.repetition = df.repetition.astype(int)
     df.F_days = df.F_days.astype(int)
     df.F_burn_in = df.F_burn_in.astype(int)
-    # F_throughput_model is now handled as string, no conversion needed
+    # F_uniform_duration_minutes should be int
+    if 'F_uniform_duration_minutes' in df.columns:
+        df.F_uniform_duration_minutes = df.F_uniform_duration_minutes.astype(int)
+    # F_throughput_model and F_uniform_duration_mode are handled as strings, no conversion needed
     # F_throughput_model_penalty will be float by default from build_full_fact
     
     # Placeholder variables

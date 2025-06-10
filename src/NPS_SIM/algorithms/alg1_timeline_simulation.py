@@ -21,7 +21,9 @@ def Run_simulation(agents,
                    F_throughput_model: str = "Static",
                    F_throughput_model_penalty: float = 0.1,
                    F_nps_model: str = "Static",
-                   F_nps_model_penalty: float = 0.1
+                   F_nps_model_penalty: float = 0.1,
+                   F_uniform_duration_mode: str = "DISABLED",
+                   F_uniform_duration_minutes: int = 180
                    ):
     """
     Run a simulation with the given parameters.
@@ -62,6 +64,10 @@ def Run_simulation(agents,
         Type of NPS model to use/train ("Static", "Lasso", "Gamma_GLM").
     F_nps_model_penalty : float
         Penalty (alpha) parameter for the dynamic NPS model (Lasso or Gamma_GLM).
+    F_uniform_duration_mode : str
+        Enable uniform duration mode ("ENABLED" or "DISABLED"). When enabled, all cases take exactly the same duration.
+    F_uniform_duration_minutes : int
+        Duration in minutes for each case when uniform duration mode is enabled (default 180).
         
     Returns:
     --------
@@ -84,7 +90,7 @@ def Run_simulation(agents,
     from algorithms.alg5_case_activities import CaseActivities
     
     # Define a local store_evlog function instead of importing it
-    def store_evlog(L, P_scheme, agents, filedest, F_burn_in, F_NPS_dist_bias, seed, F_tNPS_wtime_effect_bias, F_days, total_days):
+    def store_evlog(L, P_scheme, agents, filedest, F_burn_in, F_NPS_dist_bias, seed, F_tNPS_wtime_effect_bias, F_days, total_days, F_uniform_duration_mode, F_uniform_duration_minutes):
         import pandas as pd
         import numpy as np
         import datetime
@@ -167,6 +173,8 @@ def Run_simulation(agents,
                            "F_burn_in":[F_burn_in]*length,
                            "F_tNPS_wtime_effect_bias":[F_tNPS_wtime_effect_bias]*length,
                            "F_NPS_dist_bias":[F_NPS_dist_bias]*length,
+                           "F_uniform_duration_mode":[F_uniform_duration_mode]*length,  
+                           "F_uniform_duration_minutes":[F_uniform_duration_minutes]*length,
                            "seed":[seed]*length,
                            
                            "simulated_NPS":[NPS_simulated]*length,
@@ -551,7 +559,9 @@ def Run_simulation(agents,
                                                         start_delays=True, 
                                                         end_delays=True, 
                                                         verbose=verbose, 
-                                                        counter=counter)
+                                                        counter=counter,
+                                                        F_uniform_duration_mode=F_uniform_duration_mode,
+                                                        F_uniform_duration_minutes=F_uniform_duration_minutes)
                 
             
     
@@ -561,7 +571,7 @@ def Run_simulation(agents,
     
     arrived_cases = len(Case_DB)
     
-    evlog = store_evlog(L, P_scheme, agents, filedest=filename, F_burn_in=F_burn_in, F_NPS_dist_bias=F_NPS_dist_bias, seed=seed, F_tNPS_wtime_effect_bias=F_tNPS_wtime_effect_bias, F_days=F_days, total_days=total_days)
+    evlog = store_evlog(L, P_scheme, agents, filedest=filename, F_burn_in=F_burn_in, F_NPS_dist_bias=F_NPS_dist_bias, seed=seed, F_tNPS_wtime_effect_bias=F_tNPS_wtime_effect_bias, F_days=F_days, total_days=total_days, F_uniform_duration_mode=F_uniform_duration_mode, F_uniform_duration_minutes=F_uniform_duration_minutes)
     
     # Calculate main period performance metrics if dynamic models were used
     main_period_metrics = {"mae_main": float('nan'), "mse_main": float('nan'), "n_main_cases": 0}

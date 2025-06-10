@@ -29,7 +29,7 @@ z_window_start = 10
 window_end = 11
 """
 
-def CaseActivities(d, Case_DB, Theta, Psi, L, p_vectors, seed, start_delays=True, end_delays=True, verbose=False, counter=0):
+def CaseActivities(d, Case_DB, Theta, Psi, L, p_vectors, seed, start_delays=True, end_delays=True, verbose=False, counter=0, F_uniform_duration_mode="DISABLED", F_uniform_duration_minutes=180):
     import datetime
     
     # Set a consistent random seed at the beginning of the function
@@ -382,26 +382,56 @@ def CaseActivities(d, Case_DB, Theta, Psi, L, p_vectors, seed, start_delays=True
                 Generating the activities and durations
                 ############################################################
                 """
+                
+                # Check if uniform duration mode is enabled
+                if F_uniform_duration_mode == "ENABLED":
+                    # Uniform duration mode: bypass markov chain, single activity with fixed duration
+                    if first_event:
+                        a_k = "UniformWork"  # Single activity type
+                        k = 1
+                    else:
+                        a_k = "END"  # End after the single uniform activity
+                        k += 1
                     
-                # Get the next activity
-                a_k, k, counter = activity_dist(k, a_k0, counter=counter, p_vectors=p_vectors) #previous A_k
-                
-                # update t_start with start delay if any
-                t_start = t_start + t_start_delay
-                t_start_dt = t_start_dt + datetime.timedelta(days=t_start_delay)
-                
-                # second check of the delay: did the rescheduled date also conform to the rules?
-                
-                if verbose == True:
-                    print("t_start:",t_start," - ", t_start_dt.strftime('%m/%d/%Y %H:%M:%S'))
-                # Get the duration of next activity
-                t_start, t_end, t, t_start_dt, t_end_dt = duration_dist(t_start, 
-                                                                        t_start_dt,
-                                                                        k=k, 
-                                                                        a=a_k,
-                                                                        psi_personality=psi["personality"], 
-                                                                        case_topic=Theta[caseid]["c_topic"],
-                                                                        counter=counter) 
+                    # update t_start with start delay if any
+                    t_start = t_start + t_start_delay
+                    t_start_dt = t_start_dt + datetime.timedelta(days=t_start_delay)
+                    
+                    if a_k == "UniformWork":
+                        # Fixed duration in days (convert minutes to days)
+                        t = F_uniform_duration_minutes / (24 * 60)  # Convert minutes to days
+                        t_end = t_start + t
+                        t_end_dt = t_start_dt + datetime.timedelta(days=t)
+                        
+                        if verbose:
+                            print(f"Uniform duration mode: {F_uniform_duration_minutes} minutes = {t:.6f} days")
+                    else:
+                        # END activity - no duration
+                        t = 0
+                        t_end = t_start
+                        t_end_dt = t_start_dt
+                        
+                else:
+                    # Standard mode: use markov chain and duration distributions
+                    # Get the next activity
+                    a_k, k, counter = activity_dist(k, a_k0, counter=counter, p_vectors=p_vectors) #previous A_k
+                    
+                    # update t_start with start delay if any
+                    t_start = t_start + t_start_delay
+                    t_start_dt = t_start_dt + datetime.timedelta(days=t_start_delay)
+                    
+                    # second check of the delay: did the rescheduled date also conform to the rules?
+                    
+                    if verbose == True:
+                        print("t_start:",t_start," - ", t_start_dt.strftime('%m/%d/%Y %H:%M:%S'))
+                    # Get the duration of next activity
+                    t_start, t_end, t, t_start_dt, t_end_dt = duration_dist(t_start, 
+                                                                            t_start_dt,
+                                                                            k=k, 
+                                                                            a=a_k,
+                                                                            psi_personality=psi["personality"], 
+                                                                            case_topic=Theta[caseid]["c_topic"],
+                                                                            counter=counter) 
                 
                 if verbose == True:
                     print("duration:",t)
